@@ -24,11 +24,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Call authService.Register
+	res, err := h.authService.Register(r.Context(), req)
+	if err != nil {
+		http.Error(w, "Register Failed", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "register endpoint - to be implemented",
-	})
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(res)
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -39,9 +43,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Call authService.Login
+	res, err := h.authService.Login(r.Context(), req)
+	if err != nil {
+		http.Error(w, "Invalid Email or Password", http.StatusBadRequest)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "login endpoint - to be implemented",
-	})
+	json.NewEncoder(w).Encode(res)
 }
