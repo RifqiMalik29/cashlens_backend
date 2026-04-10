@@ -1,0 +1,123 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
+
+	"github.com/rifqimalik/cashlens-backend/internal/config"
+	"github.com/rifqimalik/cashlens-backend/internal/database"
+	"github.com/rifqimalik/cashlens-backend/internal/handlers"
+	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/repository"
+	"github.com/rifqimalik/cashlens-backend/internal/service"
+)
+
+func main() {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Setup context
+	ctx := context.Background()
+
+	// Initialize database
+	db, err := database.New(ctx, cfg.Database.URL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+	log.Println("Database connected successfully")
+
+	// Initialize repositories
+	userRepo := repository.NewUserRepository(db.Pool)
+	categoryRepo := repository.NewCategoryRepository(db.Pool)
+	transactionRepo := repository.NewTransactionRepository(db.Pool)
+
+	// Initialize services
+	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	categoryService := service.NewCategoryService(categoryRepo)
+	transactionService := service.NewTransactionService(transactionRepo)
+
+	// Initialize handlers
+	healthHandler := handlers.NewHealthHandler(db)
+	authHandler := handlers.NewAuthHandler(authService)
+	categoryHandler := handlers.NewCategoryHandler(categoryService)
+	transactionHandler := handlers.NewTransactionHandler(transactionService)
+
+	// Setup router
+	r := chi.NewRouter()
+
+	// Global middleware
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(custommiddleware.CORS)
+	r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
+
+	// Health check (public)
+	r.Get("/health", healthHandler.Check)
+
+	// API routes
+	r.Route("/api/v1", func(r chi.Router) {
+		// Public auth routes
+		r.Post("/auth/register", authHandler.Register)
+		r.Post("/auth/login", authHandler.Login)
+
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			r.Use(custommiddleware.Auth(authService))
+
+			// Categories
+			r.Post("/categories", categoryHandler.Create)
+			r.Get("/categories", categoryHandler.List)
+
+			// Transactions
+			r.Post("/transactions", transactionHandler.Create)
+			r.Get("/transactions", transactionHandler.List)
+		})
+	})
+
+	// Setup HTTP server
+	srv := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server in goroutine
+	go func() {
+		log.Printf("Server starting on port %s (environment: %s)", cfg.Server.Port, cfg.Server.Environment)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Server shutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server stopped gracefully")
+}
