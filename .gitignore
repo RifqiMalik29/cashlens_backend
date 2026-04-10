@@ -27,5 +27,5 @@ docs/
 
 #ai
 # .claude/
-# .gemini/
+.gemini/
 # ./qwen/
