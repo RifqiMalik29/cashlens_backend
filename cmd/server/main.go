@@ -67,7 +67,19 @@ func main() {
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
 	if cfg.Telegram.BotToken != "" {
-		botService = telegram.NewBotService(cfg.Telegram.BotToken, draftService, userRepo, chatRepo)
+		botService = telegram.NewBotService(
+			cfg.Telegram.BotToken,
+			cfg.GeminiAPI.APIKey,
+			draftService,
+			transactionService,
+			budgetService,
+			draftRepo,
+			transactionRepo,
+			budgetRepo,
+			userRepo,
+			chatRepo,
+			categoryRepo,
+		)
 		go botService.StartPolling(context.Background())
 		log.Println("Telegram bot started")
 	} else {
