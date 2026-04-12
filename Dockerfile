@@ -1,7 +1,13 @@
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
+
+# Allow Go to auto-download the toolchain version required by go.mod
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /app
+
+# Install git (needed by GOTOOLCHAIN=auto to fetch toolchains)
+RUN apk --no-cache add git
 
 # Install dependencies
 COPY go.mod go.sum ./
