@@ -26,6 +26,13 @@ type CreateTransactionRequest struct {
 	TransactionDate time.Time `json:"transaction_date"`
 }
 
+type UpdateTransactionRequest struct {
+	CategoryID      *uuid.UUID `json:"category_id,omitempty"`
+	Amount          *float64   `json:"amount,omitempty"`
+	Description     *string    `json:"description,omitempty"`
+	TransactionDate *time.Time `json:"transaction_date,omitempty"`
+}
+
 type TransactionWithCategory struct {
 	Transaction
 	Category Category `json:"category"`

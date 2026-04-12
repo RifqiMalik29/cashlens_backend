@@ -149,6 +149,44 @@ func (h *TransactionHandler) ListByDateRange(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	transactionID, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid Transaction ID", http.StatusBadRequest)
+		return
+	}
+
+	var req models.UpdateTransactionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.transactionService.Update(r.Context(), transactionID, *userID, req)
+	if err != nil {
+		var appErr *apperrors.AppError
+		if errors.As(err, &appErr) {
+			http.Error(w, appErr.Message, appErr.StatusCode())
+			return
+		}
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Transaction updated successfully",
+	})
+}
+
 func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {

@@ -17,6 +17,7 @@ type AuthService interface {
 	Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error)
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
 	ValidateToken(tokenString string) (*uuid.UUID, error)
+	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
 }
 
 type authService struct {
@@ -142,6 +143,15 @@ func (s *authService) ValidateToken(tokenString string) (*uuid.UUID, error) {
 	}
 
 	return &userID, nil
+}
+
+func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return user, nil
 }
 
 // Helper methods (to be implemented)

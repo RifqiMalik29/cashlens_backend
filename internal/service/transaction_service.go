@@ -16,6 +16,7 @@ type TransactionService interface {
 	Get(ctx context.Context, id, userID uuid.UUID) (*models.Transaction, error)
 	List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error)
 	ListByDateRange(ctx context.Context, userID uuid.UUID, start, end time.Time) ([]*models.TransactionWithCategory, error)
+	Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) error
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
@@ -91,6 +92,42 @@ func (s *transactionService) ListByDateRange(ctx context.Context, userID uuid.UU
 	}
 
 	return transactions, nil
+}
+
+func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) error {
+	tx, err := s.transactionRepo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get transaction: %w", err)
+	}
+
+	if tx.UserID != userID {
+		return errors.NewForbidden("Forbidden access")
+	}
+
+	if req.CategoryID != nil {
+		tx.CategoryID = *req.CategoryID
+	}
+
+	if req.Amount != nil && *req.Amount > 0 {
+		tx.Amount = *req.Amount
+	}
+
+	if req.Description != nil {
+		tx.Description = req.Description
+	}
+
+	if req.TransactionDate != nil {
+		tx.TransactionDate = *req.TransactionDate
+	}
+
+	tx.UpdatedAt = time.Now()
+
+	err = s.transactionRepo.Update(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("failed to update transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *transactionService) Delete(ctx context.Context, id, userID uuid.UUID) error {

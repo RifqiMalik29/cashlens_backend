@@ -79,6 +79,9 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(custommiddleware.Auth(authService))
 
+			// Auth
+			r.Get("/auth/me", authHandler.GetMe)
+
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
 			r.Get("/categories", categoryHandler.List)
@@ -91,6 +94,7 @@ func main() {
 			r.Get("/transactions", transactionHandler.List)
 			r.Get("/transactions/date-range", transactionHandler.ListByDateRange)
 			r.Get("/transactions/{id}", transactionHandler.Get)
+			r.Put("/transactions/{id}", transactionHandler.Update)
 			r.Delete("/transactions/{id}", transactionHandler.Delete)
 		})
 	})
