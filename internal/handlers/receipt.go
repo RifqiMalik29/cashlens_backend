@@ -7,17 +7,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/google/uuid"
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
+	"github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/models"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/gemini"
+	"github.com/rifqimalik/cashlens-backend/internal/repository"
 )
 
 type ReceiptHandler struct {
-	geminiAPIKey string
+	geminiAPIKey   string
+	categoryRepo   repository.CategoryRepository
 }
 
-func NewReceiptHandler(geminiAPIKey string) *ReceiptHandler {
-	return &ReceiptHandler{geminiAPIKey: geminiAPIKey}
+func NewReceiptHandler(geminiAPIKey string, categoryRepo repository.CategoryRepository) *ReceiptHandler {
+	return &ReceiptHandler{
+		geminiAPIKey:   geminiAPIKey,
+		categoryRepo:   categoryRepo,
+	}
 }
 
 func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
@@ -53,8 +62,21 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract user ID from context
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Fetch user's categories for dynamic Gemini prompt
+	categories, err := h.categoryRepo.ListByUserID(r.Context(), *userID)
+	if err != nil {
+		categories = []*models.Category{} // fallback gracefully
+	}
+
 	// Call Gemini API
-	result, err := h.callGeminiVision(imageData)
+	result, err := h.callGeminiVision(imageData, categories)
 	if err != nil {
 		apperrors.WriteJSONError(w, fmt.Sprintf("Failed to scan receipt: %v", err), http.StatusInternalServerError)
 		return
@@ -67,7 +89,7 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, error) {
+func (h *ReceiptHandler) callGeminiVision(imageData []byte, categories []*models.Category) (map[string]any, error) {
 	// Encode image to base64
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
@@ -77,8 +99,15 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, err
 		mimeType = "image/png"
 	}
 
+	// Build category list for prompt
+	var catBuilder strings.Builder
+	for _, c := range categories {
+		catBuilder.WriteString(fmt.Sprintf("- %s (%s)\n", c.Name, c.Type))
+	}
+	catList := catBuilder.String()
+
 	// Build request
-	prompt := `You are a high-precision receipt parsing engine. Analyze this image and return ONLY a JSON object.
+	prompt := fmt.Sprintf(`You are a high-precision receipt parsing engine. Analyze this image and return ONLY a JSON object.
 
 Structure:
 {
@@ -86,7 +115,7 @@ Structure:
   "currency": "IDR",
   "date": "YYYY-MM-DD",
   "merchant": "<string: brand name from top of receipt>",
-  "category": "<string: internal_category_id>",
+  "category": "<string: exact category name from the list below>",
   "items": [{"name": string, "price": number}],
   "confidence": <number: 0-100>
 }
@@ -96,16 +125,21 @@ Merchant Extraction Rules:
 - Stylized fonts can be tricky. Look at the item list to confirm if the merchant name appears there too.
 - Clean the name: Remove addresses, phone numbers, and slogans.
 
-Category Selection Logic:
-- cat_food: If you see items like "Mie", "Bakso", "Ayam", "Cendol", "Nasi", "Drink", "Food", or any restaurant names.
-- cat_shopping: For clothes, electronics, or general department stores.
-- cat_transport: For fuel, parking, or rideshare.
-- Default to "cat_other_expense" only if absolutely zero context is found.
+Available Categories (choose the most fitting name exactly as written):
+%s
+
+Category Selection Rules:
+- Match based on the items purchased, not the store name.
+- Food, drinks, restaurants → food category
+- Stationery, office supplies, crafts → shopping category
+- Fuel, parking, rideshare → transport category
+- If unsure, pick the closest match. Only use "Other" if nothing fits.
 
 Anti-Hallucination Rules:
 - IGNORE "Tunai", "Cash", or "Bayar" lines when picking the "amount".
 - IGNORE "Kembalian" or "Change".
-- The "amount" must equal the sum of item prices if available.`
+- The "amount" must equal the sum of item prices if available.
+- Return ONLY the JSON object, no markdown, no explanation.`, catList)
 
 	requestBody := gemini.GeminiRequest{
 		Contents: []gemini.GeminiContent{

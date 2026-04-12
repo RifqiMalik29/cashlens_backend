@@ -83,7 +83,7 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey)
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, categoryRepo)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
