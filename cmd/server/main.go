@@ -89,6 +89,9 @@ func main() {
 			// Transactions
 			r.Post("/transactions", transactionHandler.Create)
 			r.Get("/transactions", transactionHandler.List)
+			r.Get("/transactions/date-range", transactionHandler.ListByDateRange)
+			r.Get("/transactions/{id}", transactionHandler.Get)
+			r.Delete("/transactions/{id}", transactionHandler.Delete)
 		})
 	})
 
