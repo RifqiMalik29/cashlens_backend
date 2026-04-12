@@ -19,6 +19,7 @@ type AuthService interface {
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
 	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
+	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
 }
 
 type authService struct {
@@ -152,6 +153,15 @@ func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (
 		"is_linked": link.IsActive,
 		"chat_id":   link.ChatID,
 	}, nil
+}
+
+func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) error {
+	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
+	if err != nil {
+		return fmt.Errorf("no telegram link found for user")
+	}
+
+	return s.chatRepo.Delete(ctx, link.ID)
 }
 
 // Helper methods (to be implemented)

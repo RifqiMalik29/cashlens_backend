@@ -138,6 +138,7 @@ func main() {
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
 			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
+			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
 			r.Post("/auth/logout", authHandler.Logout)
 
 			// Categories
