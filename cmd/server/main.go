@@ -82,6 +82,9 @@ func main() {
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
 			r.Get("/categories", categoryHandler.List)
+			r.Get("/categories/{id}", categoryHandler.Get)
+			r.Put("/categories/{id}", categoryHandler.Update)
+			r.Delete("/categories/{id}", categoryHandler.Delete)
 
 			// Transactions
 			r.Post("/transactions", transactionHandler.Create)

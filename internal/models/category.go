@@ -31,3 +31,10 @@ type CreateCategoryRequest struct {
 	Icon  string       `json:"icon,omitempty"`
 	Color string       `json:"color,omitempty"`
 }
+
+type UpdateCategoryRequest struct {
+	Name  *string       `json:"name,omitempty"`
+	Type  *CategoryType `json:"type,omitempty"`
+	Icon  *string       `json:"icon,omitempty"`
+	Color *string       `json:"color,omitempty"`
+}

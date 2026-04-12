@@ -25,7 +25,7 @@ Thumbs.db
 vendor/
 docs/
 
-#ai
-# .claude/
+# AI assistants
+.claude/
 .gemini/
-# ./qwen/
+.qwen/
