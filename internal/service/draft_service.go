@@ -122,6 +122,9 @@ func (s *draftService) Confirm(ctx context.Context, draftID, userID uuid.UUID, r
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
 	}
 
+	// Link the transaction ID back to the draft
+	_ = s.draftRepo.SetConfirmedTransaction(ctx, draftID, transaction.ID)
+
 	return transaction, nil
 }
 

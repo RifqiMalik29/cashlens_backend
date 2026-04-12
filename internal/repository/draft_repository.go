@@ -16,6 +16,7 @@ type DraftRepository interface {
 	Update(ctx context.Context, draft *models.DraftTransaction) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	Confirm(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error
+	SetConfirmedTransaction(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error
 }
 
 type draftRepository struct {
@@ -101,9 +102,12 @@ func (r *draftRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *draftRepository) Confirm(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error {
-	query := `UPDATE draft_transactions SET status = 'confirmed', confirmed_transaction_id = $1, updated_at = NOW() WHERE id = $2 AND status = 'pending'`
+	// Lock the draft atomically by setting status = 'confirmed' only if still pending.
+	// confirmed_transaction_id is set separately after the transaction row exists,
+	// to avoid a foreign key violation.
+	lockQuery := `UPDATE draft_transactions SET status = 'confirmed', updated_at = NOW() WHERE id = $1 AND status = 'pending'`
 
-	result, err := r.db.Exec(ctx, query, txID, draftID)
+	result, err := r.db.Exec(ctx, lockQuery, draftID)
 	if err != nil {
 		return fmt.Errorf("failed to confirm draft: %w", err)
 	}
@@ -112,5 +116,16 @@ func (r *draftRepository) Confirm(ctx context.Context, draftID uuid.UUID, txID u
 		return fmt.Errorf("draft already confirmed")
 	}
 
+	// Now set the confirmed_transaction_id after the transaction row will be created.
+	// This is updated by the service layer after transactionRepo.Create succeeds.
+	return nil
+}
+
+func (r *draftRepository) SetConfirmedTransaction(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error {
+	query := `UPDATE draft_transactions SET confirmed_transaction_id = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.Exec(ctx, query, txID, draftID)
+	if err != nil {
+		return fmt.Errorf("failed to set confirmed transaction: %w", err)
+	}
 	return nil
 }

@@ -78,6 +78,10 @@ func (m *MockDraftRepository) Confirm(ctx context.Context, draftID uuid.UUID, tx
 	return m.ConfirmFunc(ctx, draftID, txID)
 }
 
+func (m *MockDraftRepository) SetConfirmedTransaction(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error {
+	return nil
+}
+
 func TestTransactionService_Create(t *testing.T) {
 	userID := uuid.New()
 	categoryID := uuid.New()
