@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -50,6 +51,24 @@ func (e *AppError) StatusCode() int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// ErrorResponse represents a standardized JSON error response
+type ErrorResponse struct {
+	Error   string            `json:"error"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
+// WriteJSONError writes a JSON error response with the proper headers and status code
+func WriteJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
+}
+
+// WriteAppError writes an AppError as a JSON response
+func WriteAppError(w http.ResponseWriter, appErr *AppError) {
+	WriteJSONError(w, appErr.Message, appErr.StatusCode())
 }
 
 // Helper functions to create errors easily
