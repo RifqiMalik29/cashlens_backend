@@ -18,17 +18,20 @@ type AuthService interface {
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
+	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
 }
 
 type authService struct {
 	userRepo      repository.UserRepository
+	chatRepo      repository.ChatLinkRepository
 	jwtSecret     string
 	jwtExpiration time.Duration
 }
 
-func NewAuthService(userRepo repository.UserRepository, jwtSecret string, jwtExpiration time.Duration) AuthService {
+func NewAuthService(userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, jwtSecret string, jwtExpiration time.Duration) AuthService {
 	return &authService{
 		userRepo:      userRepo,
+		chatRepo:      chatRepo,
 		jwtSecret:     jwtSecret,
 		jwtExpiration: jwtExpiration,
 	}
@@ -135,6 +138,20 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User
 	}
 
 	return user, nil
+}
+
+func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
+	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
+	if err != nil {
+		return map[string]any{
+			"is_linked": false,
+		}, nil
+	}
+
+	return map[string]any{
+		"is_linked": link.IsActive,
+		"chat_id":   link.ChatID,
+	}, nil
 }
 
 // Helper methods (to be implemented)

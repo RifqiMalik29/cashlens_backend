@@ -62,7 +62,7 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	authService := service.NewAuthService(userRepo, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -137,6 +137,7 @@ func main() {
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
+			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
 			r.Post("/auth/logout", authHandler.Logout)
 
 			// Categories
