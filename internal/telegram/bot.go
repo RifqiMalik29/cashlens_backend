@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -32,7 +33,7 @@ func NewBotService(botToken string, draftSvc service.DraftService, userRepo repo
 		draftSvc:   draftSvc,
 		userRepo:   userRepo,
 		chatRepo:   chatRepo,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: 30 * time.Second}, // Increased for long polling
 	}
 }
 
@@ -143,7 +144,7 @@ func (b *BotService) handleLink(chatID int64, email string, username *string) {
 		return
 	}
 
-	b.sendReply(chatID, fmt.Sprintf("✅ *Account Linked!*\n\nWelcome, %s!\nYou can now send transactions directly from here.", user.Name))
+	b.sendReply(chatID, fmt.Sprintf("✅ Account Linked!\n\nWelcome, %s!\nYou can now send transactions directly from here.", user.Name))
 }
 
 func (b *BotService) handleMessage(chatID int64, text string) {
@@ -176,7 +177,9 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 		return
 	}
 
-	b.sendReply(chatID, fmt.Sprintf("✅ *Draft Created!*\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s\n\nOpen the app to confirm.", draft.Amount, *draft.Description, draft.TransactionDate.Format("2006-01-02")))
+	desc := *draft.Description
+	dateStr := draft.TransactionDate.Format("2006-01-02")
+	b.sendReply(chatID, fmt.Sprintf("✅ Draft Created!\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s\n\nOpen the app to confirm.", *draft.Amount, desc, dateStr))
 }
 
 type ParsedMessage struct {
@@ -243,7 +246,7 @@ func (b *BotService) handleRecent(chatID int64) {
 		return
 	}
 
-	msg := "📋 *Recent Drafts:*\n\n"
+	msg := "📋 Recent Drafts:\n\n"
 	for i, d := range drafts[:min(5, len(drafts))] {
 		msg += fmt.Sprintf("%d. Rp %.0f - %s\n", i+1, *d.Amount, *d.Description)
 	}
@@ -256,7 +259,7 @@ func (b *BotService) sendReply(chatID int64, text string) {
 	reply := SendMessageRequest{
 		ChatID:    chatID,
 		Text:      text,
-		ParseMode: "Markdown",
+		ParseMode: "", // Plain text - no markdown parsing issues
 	}
 
 	jsonBody, err := json.Marshal(reply)
@@ -274,7 +277,8 @@ func (b *BotService) sendReply(chatID int64, text string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[Telegram Bot] API error (status %d)", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[Telegram Bot] API error (status %d): %s", resp.StatusCode, string(body))
 	}
 }
 
