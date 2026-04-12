@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/rifqimalik/cashlens-backend/internal/logger" // For future structured logging migration
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/gemini"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
@@ -478,8 +479,18 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 		return
 	}
 
-	// Smart parse the message
-	parsed := b.smartParse(text)
+	// Get all categories for this user to help AI suggest one
+	categories, _ := b.categoryRepo.ListByUserID(context.Background(), link.UserID)
+
+	// Try AI parsing first
+	var parsed ParsedMessage
+	aiParsed, err := b.parseWithAI(text, categories)
+	if err == nil {
+		parsed = aiParsed
+	} else {
+		log.Printf("[Telegram Bot] AI parsing failed, falling back to smartParse: %v", err)
+		parsed = b.smartParse(text)
+	}
 
 	// Create draft
 	draftReq := models.CreateDraftRequest{
@@ -490,7 +501,7 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 		Source:          models.DraftSourceTelegram,
 		RawData: map[string]any{
 			"message_text": text,
-			"parsed_by":    "smart_parser",
+			"parsed_by":    "gemini_ai",
 		},
 	}
 
@@ -500,27 +511,134 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 		return
 	}
 
-	// Show AI-powered category selector
-	b.showAICategorySelector(chatID, draft, text)
+	// Show confirmation with category buttons
+	b.showDraftConfirmation(chatID, draft, categories, parsed.CategoryName)
 }
 
-func (b *BotService) showAICategorySelector(chatID int64, draft *models.DraftTransaction, originalMessage string) {
-	// Get all categories for this user
-	categories, err := b.categoryRepo.ListByUserID(context.Background(), draft.UserID)
-	if err != nil {
-		log.Printf("[Telegram Bot] Failed to get categories: %v", err)
-		b.sendReply(chatID, "❌ Failed to load categories.")
-		return
+func (b *BotService) parseWithAI(text string, categories []*models.Category) (ParsedMessage, error) {
+	if b.geminiAPIKey == "" {
+		return ParsedMessage{}, fmt.Errorf("Gemini API key not configured")
 	}
 
-	// Ask AI to suggest a category
-	aiSuggestion := b.detectCategoryWithAI(*draft.Description, categories)
+	var catNames []string
+	for _, cat := range categories {
+		catNames = append(catNames, cat.Name)
+	}
 
-	// Send initial message with AI suggestion
-	b.sendReply(chatID, fmt.Sprintf("✅ Draft Created!\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s\n\n🤖 AI suggests: %s\n\nTap a category to confirm or choose another:", *draft.Amount, *draft.Description, draft.TransactionDate.Format("2006-01-02"), aiSuggestion))
+	prompt := fmt.Sprintf(`You are a financial assistant. Parse this message into a JSON object.
+Message: "%s"
+Current Year: %d
+Available Categories: %s
 
-	// Show category buttons
-	b.showCategoryButtons(chatID, draft, categories, aiSuggestion)
+Rules:
+1. Extract "amount" as a number. Convert "rb" or "k" to thousands (e.g., 50rb -> 50000).
+2. "description" should be a clean summary of the spending.
+3. "category_name" must be the best match from the Available Categories list.
+4. "date" should be in YYYY-MM-DD format. Assume today if not specified.
+
+Return ONLY a JSON object:
+{
+  "amount": number,
+  "description": string,
+  "category_name": string,
+  "date": "YYYY-MM-DD"
+}`, text, time.Now().Year(), strings.Join(catNames, ", "))
+
+	requestBody := gemini.GeminiRequest{
+		Contents: []gemini.GeminiContent{
+			{
+				Parts: []gemini.GeminiPart{
+					{Text: prompt},
+				},
+			},
+		},
+		GenerationConfig: &gemini.GeminiGenerationConfig{
+			ResponseMimeType: "application/json",
+			Temperature:      0.1,
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return ParsedMessage{}, err
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=%s", b.geminiAPIKey)
+	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return ParsedMessage{}, err
+	}
+	defer resp.Body.Close()
+
+	var geminiResp gemini.GeminiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+		return ParsedMessage{}, err
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return ParsedMessage{}, fmt.Errorf("empty response")
+	}
+
+	responseText := geminiResp.Candidates[0].Content.Parts[0].Text
+	
+	// Strip markdown code blocks if present
+	cleanJSON := responseText
+	if strings.Contains(cleanJSON, "```json") {
+		cleanJSON = strings.Split(cleanJSON, "```json")[1]
+		cleanJSON = strings.Split(cleanJSON, "```")[0]
+	} else if strings.Contains(cleanJSON, "```") {
+		cleanJSON = strings.Split(cleanJSON, "```")[1]
+		cleanJSON = strings.Split(cleanJSON, "```")[0]
+	}
+	cleanJSON = strings.TrimSpace(cleanJSON)
+
+	var result struct {
+		Amount       float64 `json:"amount"`
+		Description  string  `json:"description"`
+		CategoryName string  `json:"category_name"`
+		Date         string  `json:"date"`
+	}
+
+	if err := json.Unmarshal([]byte(cleanJSON), &result); err != nil {
+		log.Printf("[Telegram Bot] Failed to unmarshal AI response: %v\nResponse: %s", err, responseText)
+		return ParsedMessage{}, err
+	}
+
+	// Map back to ParsedMessage
+	parsed := ParsedMessage{
+		Amount:       result.Amount,
+		Description:  result.Description,
+		CategoryName: result.CategoryName,
+	}
+
+	if d, err := time.Parse("2006-01-02", result.Date); err == nil {
+		parsed.Date = d
+	} else {
+		parsed.Date = time.Now().Truncate(24 * time.Hour)
+	}
+
+	// Match category ID
+	for _, cat := range categories {
+		if strings.EqualFold(cat.Name, result.CategoryName) {
+			parsed.CategoryID = &cat.ID
+			break
+		}
+	}
+
+	return parsed, nil
+}
+
+func (b *BotService) showDraftConfirmation(chatID int64, draft *models.DraftTransaction, categories []*models.Category, suggestedCategory string) {
+	msg := fmt.Sprintf("✅ Draft Created!\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s", *draft.Amount, *draft.Description, draft.TransactionDate.Format("2006-01-02"))
+	
+	if suggestedCategory != "" {
+		msg += fmt.Sprintf("\n🤖 AI Suggests: %s", suggestedCategory)
+	}
+
+	msg += "\n\nTap a category to confirm or choose another:"
+
+	b.sendReply(chatID, msg)
+	b.showCategoryButtons(chatID, draft, categories, suggestedCategory)
 }
 
 func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransaction, categories []*models.Category, aiSuggestion string) {
@@ -556,130 +674,66 @@ func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransa
 }
 
 func (b *BotService) detectCategoryWithAI(description string, categories []*models.Category) string {
-	// Build category list for AI prompt
-	var catNames []string
-	for _, cat := range categories {
-		catNames = append(catNames, cat.Name)
-	}
-
-	prompt := fmt.Sprintf(`You are a category detection expert. Given a transaction description, choose the best matching category from this list: %s
-
-Transaction: "%s"
-
-Return ONLY the category name, nothing else. If no category matches well, return "Other" or the closest match.`, strings.Join(catNames, ", "), description)
-
-	// Call Gemini API
-	result, err := b.callGeminiForCategory(prompt)
-	if err != nil {
-		log.Printf("[Telegram Bot] AI category detection failed: %v", err)
-		// Fallback to first category or "Other"
-		if len(categories) > 0 {
-			return categories[0].Name
-		}
-		return "Unknown"
-	}
-
-	// Match AI response to actual category
-	result = strings.TrimSpace(result)
-	for _, cat := range categories {
-		if strings.EqualFold(cat.Name, result) {
-			return cat.Name
-		}
-	}
-
-	// If no exact match, return the AI suggestion anyway (user can correct)
-	return result
+	return "Other"
 }
 
 func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
-	if b.geminiAPIKey == "" {
-		return "", fmt.Errorf("Gemini API key not configured")
-	}
-
-	requestBody := GeminiTextRequest{
-		Contents: []GeminiContent{
-			{
-				Parts: []GeminiPart{
-					{Text: prompt},
-				},
-			},
-		},
-		GenerationConfig: &GeminiGenerationConfig{
-			Temperature: 0.1,
-		},
-	}
-
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", b.geminiAPIKey)
-	
-	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to call Gemini API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var geminiResp GeminiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("empty response from Gemini API")
-	}
-
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+	return "", nil
 }
 
 type ParsedMessage struct {
-	Amount      float64
-	Description string
-	CategoryID  *uuid.UUID
-	Date        time.Time
+	Amount       float64
+	Description  string
+	CategoryID   *uuid.UUID
+	CategoryName string
+	Date         time.Time
 }
 
 func (b *BotService) smartParse(text string) ParsedMessage {
-	// Pattern: "amount description" or "amount description category"
-	// Examples: "35000 lunch", "50000 transport grab", "120000 shopping shoes"
-	
-	amountRegex := regexp.MustCompile(`^(\d+(?:[.,]\d+)?)\s+(.+)$`)
-	matches := amountRegex.FindStringSubmatch(strings.TrimSpace(text))
-
+	text = strings.TrimSpace(text)
 	result := ParsedMessage{
 		Date: time.Now().Truncate(24 * time.Hour),
 	}
 
-	if len(matches) >= 3 {
-		amountStr := strings.ReplaceAll(matches[1], ",", "")
-		amount, err := strconv.ParseFloat(amountStr, 64)
-		if err == nil {
-			result.Amount = amount
-		}
+	// Clean up "Rp" and thousands separators for easier parsing
+	cleanText := strings.ReplaceAll(strings.ReplaceAll(strings.ToLower(text), "rp", ""), ".", "")
+	cleanText = strings.TrimSpace(cleanText)
 
-		description := matches[2]
-		result.Description = description
+	// Pattern 1: Starts with amount (e.g., "55000 lunch", "55k lunch")
+	startAmountRegex := regexp.MustCompile(`^(\d+)([kr]?)\s+(.+)$`)
+	// Pattern 2: Ends with amount (e.g., "lunch 55000", "lunch 55k")
+	endAmountRegex := regexp.MustCompile(`^(.+)\s+(\d+)([kr]?)$`)
 
-		// Try to detect category from keywords
-		lower := strings.ToLower(description)
-		if strings.Contains(lower, "makan") || strings.Contains(lower, "lunch") || strings.Contains(lower, "dinner") || strings.Contains(lower, "breakfast") || strings.Contains(lower, "kopi") || strings.Contains(lower, "coffee") {
-			// cat_food - but we don't have category lookup here, so leave nil
-			// User can adjust in app
-		} else if strings.Contains(lower, "transport") || strings.Contains(lower, "grab") || strings.Contains(lower, "gojek") || strings.Contains(lower, "bensin") || strings.Contains(lower, "parkir") {
-			// cat_transport
-		} else if strings.Contains(lower, "belanja") || strings.Contains(lower, "shopping") || strings.Contains(lower, "baju") || strings.Contains(lower, "elektronik") {
-			// cat_shopping
+	if matches := startAmountRegex.FindStringSubmatch(cleanText); len(matches) >= 4 {
+		amount, _ := strconv.ParseFloat(matches[1], 64)
+		if strings.ToLower(matches[2]) == "k" || strings.ToLower(matches[2]) == "r" { // r for rb
+			amount *= 1000
 		}
+		result.Amount = amount
+		result.Description = strings.TrimSpace(matches[3])
+	} else if matches := endAmountRegex.FindStringSubmatch(cleanText); len(matches) >= 4 {
+		amount, _ := strconv.ParseFloat(matches[2], 64)
+		if strings.ToLower(matches[3]) == "k" || strings.ToLower(matches[3]) == "r" {
+			amount *= 1000
+		}
+		result.Amount = amount
+		result.Description = strings.TrimSpace(matches[1])
 	} else {
-		// Fallback: try to just extract amount
-		result.Description = text
+		// Fallback: Try to find any number with optional k/rb suffix in the string
+		onlyNumbers := regexp.MustCompile(`(\d+)([kr]?)`)
+		allNumbers := onlyNumbers.FindAllStringSubmatch(cleanText, -1)
+		if len(allNumbers) > 0 {
+			lastMatch := allNumbers[len(allNumbers)-1]
+			amount, _ := strconv.ParseFloat(lastMatch[1], 64)
+			if strings.ToLower(lastMatch[2]) == "k" || strings.ToLower(lastMatch[2]) == "r" {
+				amount *= 1000
+			}
+			result.Amount = amount
+			result.Description = text
+		} else {
+			result.Amount = 0
+			result.Description = text
+		}
 	}
 
 	return result
@@ -845,7 +899,10 @@ func (b *BotService) handleQuickTemplate(chatID int64, messageID int64, amountSt
 	}
 
 	b.answerCallbackQuery(callbackID, "Draft created!")
-	b.showAICategorySelector(chatID, draft, description)
+
+	// Show category buttons
+	categories, _ := b.categoryRepo.ListByUserID(context.Background(), link.UserID)
+	b.showDraftConfirmation(chatID, draft, categories, "")
 }
 
 // Feature #4: Transaction History
@@ -936,40 +993,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// Gemini API types
-type GeminiTextRequest struct {
-	Contents         []GeminiContent         `json:"contents"`
-	GenerationConfig *GeminiGenerationConfig `json:"generationConfig,omitempty"`
-}
-
-type GeminiContent struct {
-	Parts []GeminiPart `json:"parts"`
-}
-
-type GeminiPart struct {
-	Text       string           `json:"text,omitempty"`
-	InlineData *GeminiImageData `json:"inlineData,omitempty"`
-}
-
-type GeminiImageData struct {
-	MimeType string `json:"mimeType"`
-	Data     string `json:"data"`
-}
-
-type GeminiGenerationConfig struct {
-	Temperature float64 `json:"temperature"`
-}
-
-type GeminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
 }
 
 // Telegram API types

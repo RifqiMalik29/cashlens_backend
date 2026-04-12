@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/gemini"
 )
 
 type ReceiptHandler struct {
@@ -66,41 +67,6 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Gemini API response structures
-type GeminiRequest struct {
-	Contents         []GeminiContent         `json:"contents"`
-	GenerationConfig *GeminiGenerationConfig `json:"generationConfig,omitempty"`
-}
-
-type GeminiGenerationConfig struct {
-	ResponseMimeType string  `json:"responseMimeType"`
-	Temperature      float64 `json:"temperature"`
-}
-
-type GeminiContent struct {
-	Parts []GeminiPart `json:"parts"`
-}
-
-type GeminiPart struct {
-	Text       string           `json:"text,omitempty"`
-	InlineData *GeminiImageData `json:"inlineData,omitempty"`
-}
-
-type GeminiImageData struct {
-	MimeType string `json:"mimeType"`
-	Data     string `json:"data"`
-}
-
-type GeminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-}
-
 func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, error) {
 	// Encode image to base64
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
@@ -141,16 +107,16 @@ Anti-Hallucination Rules:
 - IGNORE "Kembalian" or "Change".
 - The "amount" must equal the sum of item prices if available.`
 
-	requestBody := GeminiRequest{
-		Contents: []GeminiContent{
+	requestBody := gemini.GeminiRequest{
+		Contents: []gemini.GeminiContent{
 			{
-				Parts: []GeminiPart{
+				Parts: []gemini.GeminiPart{
 					{Text: prompt},
-					{InlineData: &GeminiImageData{MimeType: mimeType, Data: base64Image}},
+					{InlineData: &gemini.GeminiImageData{MimeType: mimeType, Data: base64Image}},
 				},
 			},
 		},
-		GenerationConfig: &GeminiGenerationConfig{
+		GenerationConfig: &gemini.GeminiGenerationConfig{
 			ResponseMimeType: "application/json",
 			Temperature:      0.1,
 		},
@@ -162,7 +128,7 @@ Anti-Hallucination Rules:
 	}
 
 	// Call Gemini API
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", h.geminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=%s", h.geminiAPIKey)
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -176,7 +142,7 @@ Anti-Hallucination Rules:
 	}
 
 	// Parse response
-	var geminiResp GeminiResponse
+	var geminiResp gemini.GeminiResponse
 	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
