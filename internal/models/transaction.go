@@ -20,17 +20,17 @@ type Transaction struct {
 }
 
 type CreateTransactionRequest struct {
-	CategoryID      uuid.UUID `json:"category_id"`
-	Amount          float64   `json:"amount"`
-	Description     string    `json:"description,omitempty"`
-	TransactionDate time.Time `json:"transaction_date"`
+	CategoryID      uuid.UUID `json:"category_id" validate:"required,uuid"`
+	Amount          float64   `json:"amount" validate:"required,gt=0"`
+	Description     string    `json:"description,omitempty" validate:"max=500"`
+	TransactionDate time.Time `json:"transaction_date" validate:"required"`
 }
 
 type UpdateTransactionRequest struct {
-	CategoryID      *uuid.UUID `json:"category_id,omitempty"`
-	Amount          *float64   `json:"amount,omitempty"`
-	Description     *string    `json:"description,omitempty"`
-	TransactionDate *time.Time `json:"transaction_date,omitempty"`
+	CategoryID      *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid"`
+	Amount          *float64   `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	Description     *string    `json:"description,omitempty" validate:"omitempty,max=500"`
+	TransactionDate *time.Time `json:"transaction_date,omitempty" validate:"omitempty"`
 }
 
 type TransactionWithCategory struct {

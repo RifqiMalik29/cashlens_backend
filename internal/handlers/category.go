@@ -24,19 +24,19 @@ func NewCategoryHandler(categoryService service.CategoryService) *CategoryHandle
 func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateCategoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	id, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	res, err := h.categoryService.Create(r.Context(), *id, req)
 	if err != nil {
-		http.Error(w, "Create Category Failed", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to create category", http.StatusInternalServerError)
 		return
 	}
 
@@ -50,13 +50,13 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	res, err := h.categoryService.ListUserCategories(r.Context(), *id)
 	if err != nil {
-		http.Error(w, "Get Categories Failed", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list categories", http.StatusInternalServerError)
 		return
 	}
 
@@ -70,20 +70,20 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *CategoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	parseId, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "ID not found", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid category ID", http.StatusBadRequest)
 		return
 	}
 
 	res, err := h.categoryService.Get(r.Context(), parseId, *userID)
 	if err != nil {
-		http.Error(w, "Get Categories Failed", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to get category", http.StatusInternalServerError)
 		return
 	}
 
@@ -97,14 +97,14 @@ func (h *CategoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	params := chi.URLParam(r, "id")
 	parse, err := uuid.Parse(params)
 	if err != nil {
-		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid category ID", http.StatusBadRequest)
 		return
 	}
 
@@ -112,10 +112,10 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -129,20 +129,20 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	categoryID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid category ID", http.StatusBadRequest)
 		return
 	}
 
 	var req models.UpdateCategoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -150,10 +150,10 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 

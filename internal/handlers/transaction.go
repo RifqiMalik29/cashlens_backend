@@ -26,13 +26,13 @@ func NewTransactionHandler(transactionService service.TransactionService) *Trans
 func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -40,10 +40,10 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.transactionService.List(r.Context(), *userID, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to list transactions", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list transactions", http.StatusInternalServerError)
 		return
 	}
 
@@ -80,14 +80,14 @@ func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	transactionID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
 		return
 	}
 
@@ -95,10 +95,10 @@ func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -112,7 +112,7 @@ func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *TransactionHandler) ListByDateRange(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -120,25 +120,25 @@ func (h *TransactionHandler) ListByDateRange(w http.ResponseWriter, r *http.Requ
 	endStr := r.URL.Query().Get("end")
 
 	if startStr == "" || endStr == "" {
-		http.Error(w, "Start and end date query parameters are required", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Start and end date query parameters are required", http.StatusBadRequest)
 		return
 	}
 
 	start, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		http.Error(w, "Invalid start date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid start date format (expected YYYY-MM-DD)", http.StatusBadRequest)
 		return
 	}
 
 	end, err := time.Parse("2006-01-02", endStr)
 	if err != nil {
-		http.Error(w, "Invalid end date format (expected YYYY-MM-DD)", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid end date format (expected YYYY-MM-DD)", http.StatusBadRequest)
 		return
 	}
 
 	res, err := h.transactionService.ListByDateRange(r.Context(), *userID, start, end)
 	if err != nil {
-		http.Error(w, "Failed to list transactions", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list transactions", http.StatusInternalServerError)
 		return
 	}
 
@@ -152,20 +152,20 @@ func (h *TransactionHandler) ListByDateRange(w http.ResponseWriter, r *http.Requ
 func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	transactionID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
 		return
 	}
 
 	var req models.UpdateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -173,10 +173,10 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -190,14 +190,14 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	transactionID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
 		return
 	}
 
@@ -205,10 +205,10 @@ func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 

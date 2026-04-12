@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
@@ -26,7 +27,7 @@ func NewTelegramHandler(draftService service.DraftService, botToken string) *Tel
 func (h *TelegramHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 	var update TelegramUpdate
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		http.Error(w, "Invalid webhook payload", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid webhook payload", http.StatusBadRequest)
 		return
 	}
 
@@ -52,7 +53,7 @@ func (h *TelegramHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 func (h *TelegramHandler) parseMessage(chatID int64, text string) (*models.DraftTransaction, error) {
 	// Simple parser: "50000 lunch" -> amount=50000, description="lunch"
 	// TODO: Improve with regex/NLP
-	
+
 	draft := &models.DraftTransaction{
 		Source:    models.DraftSourceTelegram,
 		Status:    models.DraftStatusPending,
@@ -71,7 +72,7 @@ func (h *TelegramHandler) sendReply(chatID int64, text string, w http.ResponseWr
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
-		"method": "sendMessage",
+		"method":  "sendMessage",
 		"chat_id": chatID,
 		"text":    text,
 	})
@@ -79,15 +80,15 @@ func (h *TelegramHandler) sendReply(chatID int64, text string, w http.ResponseWr
 
 // Telegram webhook payload structures
 type TelegramUpdate struct {
-	UpdateID int64          `json:"update_id"`
+	UpdateID int64            `json:"update_id"`
 	Message  *TelegramMessage `json:"message,omitempty"`
 }
 
 type TelegramMessage struct {
-	MessageID int64  `json:"message_id"`
+	MessageID int64        `json:"message_id"`
 	Chat      TelegramChat `json:"chat"`
-	Text      string `json:"text"`
-	Date      int64  `json:"date"`
+	Text      string       `json:"text"`
+	Date      int64        `json:"date"`
 }
 
 type TelegramChat struct {

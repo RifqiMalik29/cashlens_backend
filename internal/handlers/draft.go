@@ -24,13 +24,13 @@ func NewDraftHandler(draftService service.DraftService) *DraftHandler {
 func (h *DraftHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateDraftRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -38,10 +38,10 @@ func (h *DraftHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -55,15 +55,15 @@ func (h *DraftHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *DraftHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	status := models.DraftStatus(r.URL.Query().Get("status"))
-	
+
 	res, err := h.draftService.List(r.Context(), *userID, status)
 	if err != nil {
-		http.Error(w, "Failed to list drafts", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list drafts", http.StatusInternalServerError)
 		return
 	}
 
@@ -77,14 +77,14 @@ func (h *DraftHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *DraftHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Draft ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
@@ -92,10 +92,10 @@ func (h *DraftHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -109,20 +109,20 @@ func (h *DraftHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *DraftHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Draft ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
 	var req models.ConfirmDraftRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -130,10 +130,10 @@ func (h *DraftHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -147,14 +147,14 @@ func (h *DraftHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 func (h *DraftHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Draft ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
@@ -162,10 +162,10 @@ func (h *DraftHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 

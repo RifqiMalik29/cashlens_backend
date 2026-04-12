@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 )
 
 type ReceiptHandler struct {
@@ -19,41 +21,41 @@ func NewReceiptHandler(geminiAPIKey string) *ReceiptHandler {
 
 func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 	if h.geminiAPIKey == "" {
-		http.Error(w, "Gemini API key not configured", http.StatusNotImplemented)
+		apperrors.WriteJSONError(w, "Gemini API key not configured", http.StatusNotImplemented)
 		return
 	}
 
 	// Parse multipart form (max 10MB)
 	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "Image file is required", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Image file is required", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
 	// Validate file type
 	if header.Header.Get("Content-Type") != "image/jpeg" && header.Header.Get("Content-Type") != "image/png" {
-		http.Error(w, "Only JPEG and PNG images are supported", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Only JPEG and PNG images are supported", http.StatusBadRequest)
 		return
 	}
 
 	// Read file
 	imageData, err := io.ReadAll(file)
 	if err != nil {
-		http.Error(w, "Failed to read image", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to read image", http.StatusInternalServerError)
 		return
 	}
 
 	// Call Gemini API
 	result, err := h.callGeminiVision(imageData)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to scan receipt: %v", err), http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, fmt.Sprintf("Failed to scan receipt: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -66,7 +68,7 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 
 // Gemini API response structures
 type GeminiRequest struct {
-	Contents         []GeminiContent        `json:"contents"`
+	Contents         []GeminiContent         `json:"contents"`
 	GenerationConfig *GeminiGenerationConfig `json:"generationConfig,omitempty"`
 }
 
@@ -102,7 +104,7 @@ type GeminiResponse struct {
 func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, error) {
 	// Encode image to base64
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
-	
+
 	// Determine MIME type from magic bytes
 	mimeType := "image/jpeg" // default
 	if bytes.HasPrefix(imageData, []byte{0x89, 0x50, 0x4E, 0x47}) {
@@ -161,7 +163,7 @@ Anti-Hallucination Rules:
 
 	// Call Gemini API
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", h.geminiAPIKey)
-	
+
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Gemini API: %w", err)

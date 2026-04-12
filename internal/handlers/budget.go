@@ -24,13 +24,13 @@ func NewBudgetHandler(budgetService service.BudgetService) *BudgetHandler {
 func (h *BudgetHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -38,10 +38,10 @@ func (h *BudgetHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -55,13 +55,13 @@ func (h *BudgetHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *BudgetHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	res, err := h.budgetService.List(r.Context(), *userID)
 	if err != nil {
-		http.Error(w, "Failed to list budgets", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list budgets", http.StatusInternalServerError)
 		return
 	}
 
@@ -75,14 +75,14 @@ func (h *BudgetHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *BudgetHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	budgetID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Budget ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid budget ID", http.StatusBadRequest)
 		return
 	}
 
@@ -90,10 +90,10 @@ func (h *BudgetHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -107,20 +107,20 @@ func (h *BudgetHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	budgetID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Budget ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid budget ID", http.StatusBadRequest)
 		return
 	}
 
 	var req models.UpdateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -128,10 +128,10 @@ func (h *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -145,14 +145,14 @@ func (h *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *BudgetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	budgetID, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid Budget ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid budget ID", http.StatusBadRequest)
 		return
 	}
 
@@ -160,10 +160,10 @@ func (h *BudgetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
-			http.Error(w, appErr.Message, appErr.StatusCode())
+			apperrors.WriteAppError(w, appErr)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 

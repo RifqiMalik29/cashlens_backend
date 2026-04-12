@@ -31,19 +31,19 @@ type Budget struct {
 }
 
 type CreateBudgetRequest struct {
-	CategoryID     uuid.UUID    `json:"category_id"`
-	Amount         float64      `json:"amount"`
-	PeriodType     BudgetPeriod `json:"period_type"`
-	StartDate      time.Time    `json:"start_date"`
-	EndDate        time.Time    `json:"end_date"`
-	AlertThreshold *float64     `json:"alert_threshold,omitempty"`
+	CategoryID     uuid.UUID    `json:"category_id" validate:"required,uuid"`
+	Amount         float64      `json:"amount" validate:"required,gt=0"`
+	PeriodType     BudgetPeriod `json:"period_type" validate:"required,oneof=weekly monthly yearly"`
+	StartDate      time.Time    `json:"start_date" validate:"required"`
+	EndDate        time.Time    `json:"end_date" validate:"required"`
+	AlertThreshold *float64     `json:"alert_threshold,omitempty" validate:"omitempty,gte=0,lte=100"`
 }
 
 type UpdateBudgetRequest struct {
-	CategoryID     *uuid.UUID    `json:"category_id,omitempty"`
-	Amount         *float64      `json:"amount,omitempty"`
-	PeriodType     *BudgetPeriod `json:"period_type,omitempty"`
-	StartDate      *time.Time    `json:"start_date,omitempty"`
-	EndDate        *time.Time    `json:"end_date,omitempty"`
-	AlertThreshold *float64      `json:"alert_threshold,omitempty"`
+	CategoryID     *uuid.UUID    `json:"category_id,omitempty" validate:"omitempty,uuid"`
+	Amount         *float64      `json:"amount,omitempty" validate:"omitempty,gt=0"`
+	PeriodType     *BudgetPeriod `json:"period_type,omitempty" validate:"omitempty,oneof=weekly monthly yearly"`
+	StartDate      *time.Time    `json:"start_date,omitempty" validate:"omitempty"`
+	EndDate        *time.Time    `json:"end_date,omitempty" validate:"omitempty"`
+	AlertThreshold *float64      `json:"alert_threshold,omitempty" validate:"omitempty,gte=0,lte=100"`
 }
