@@ -51,3 +51,14 @@ type ConfirmDraftRequest struct {
 	Description     string    `json:"description,omitempty"`
 	TransactionDate time.Time `json:"transaction_date"`
 }
+
+type UserChatLink struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	Platform  string     `json:"platform"`
+	ChatID    string     `json:"chat_id"`
+	Username  *string    `json:"username,omitempty"`
+	IsActive  bool       `json:"is_active"`
+	LinkedAt  time.Time  `json:"linked_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}

@@ -19,6 +19,7 @@ import (
 	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
+	"github.com/rifqimalik/cashlens-backend/internal/telegram"
 )
 
 func main() {
@@ -45,6 +46,7 @@ func main() {
 	transactionRepo := repository.NewTransactionRepository(db.Pool)
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
 	draftRepo := repository.NewDraftRepository(db.Pool)
+	chatRepo := repository.NewChatLinkRepository(db.Pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
@@ -61,7 +63,16 @@ func main() {
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
 	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey)
-	telegramHandler := handlers.NewTelegramHandler(draftService, "") // TODO: Add TELEGRAM_BOT_TOKEN to config
+
+	// Initialize Telegram Bot
+	var botService *telegram.BotService
+	if cfg.Telegram.BotToken != "" {
+		botService = telegram.NewBotService(cfg.Telegram.BotToken, draftService, userRepo, chatRepo)
+		go botService.StartPolling(context.Background())
+		log.Println("Telegram bot started")
+	} else {
+		log.Println("Telegram bot token not configured - skipping bot initialization")
+	}
 
 	// Setup router
 	r := chi.NewRouter()
@@ -122,9 +133,6 @@ func main() {
 			// Receipt Scanner
 			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
 		})
-
-		// Public webhook routes (no auth required)
-		r.Post("/webhooks/telegram", telegramHandler.Webhook)
 	})
 
 	// Setup HTTP server

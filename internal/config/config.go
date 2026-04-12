@@ -15,6 +15,7 @@ type Config struct {
 	JWT       JWTConfig
 	RateLimit RateLimitConfig
 	GeminiAPI Gemini
+	Telegram  Telegram
 }
 
 type ServerConfig struct {
@@ -40,6 +41,10 @@ type Gemini struct {
 	APIKey string
 }
 
+type Telegram struct {
+	BotToken string
+}
+
 func Load() (*Config, error) {
 	// Load .env file (ignore error if not found)
 	_ = godotenv.Load()
@@ -62,6 +67,9 @@ func Load() (*Config, error) {
 		},
 		GeminiAPI: Gemini{
 			APIKey: os.Getenv("GEMINI_API_KEY"),
+		},
+		Telegram: Telegram{
+			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		},
 	}
 
