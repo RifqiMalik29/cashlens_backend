@@ -494,7 +494,6 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 
 	// Create draft
 	draftReq := models.CreateDraftRequest{
-		CategoryID:      parsed.CategoryID,
 		Amount:          &parsed.Amount,
 		Description:     &parsed.Description,
 		TransactionDate: &parsed.Date,
@@ -505,14 +504,24 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 		},
 	}
 
+	// Assign the first AI suggestion as the default category if available
+	if len(parsed.SuggestedCategories) > 0 {
+		for _, cat := range categories {
+			if strings.EqualFold(cat.Name, parsed.SuggestedCategories[0]) {
+				draftReq.CategoryID = &cat.ID
+				break
+			}
+		}
+	}
+
 	draft, err := b.draftSvc.Create(context.Background(), link.UserID, draftReq)
 	if err != nil {
 		b.sendReply(chatID, fmt.Sprintf("❌ Failed to create draft: %v", err))
 		return
 	}
 
-	// Show confirmation with category buttons
-	b.showDraftConfirmation(chatID, draft, categories, parsed.CategoryName)
+	// Show confirmation with filtered category buttons
+	b.showDraftConfirmation(chatID, draft, categories, parsed.SuggestedCategories)
 }
 
 func (b *BotService) parseWithAI(text string, categories []*models.Category) (ParsedMessage, error) {
@@ -533,14 +542,14 @@ Available Categories: %s
 Rules:
 1. Extract "amount" as a number. Convert "rb" or "k" to thousands (e.g., 50rb -> 50000).
 2. "description" should be a clean summary of the spending.
-3. "category_name" must be the best match from the Available Categories list.
+3. "suggested_categories" must be a list of up to 6 category names from the Available Categories list that might match this transaction, ranked by relevance.
 4. "date" should be in YYYY-MM-DD format. Assume today if not specified.
 
 Return ONLY a JSON object:
 {
   "amount": number,
   "description": string,
-  "category_name": string,
+  "suggested_categories": ["string", "string", ...],
   "date": "YYYY-MM-DD"
 }`, text, time.Now().Year(), strings.Join(catNames, ", "))
 
@@ -593,10 +602,10 @@ Return ONLY a JSON object:
 	cleanJSON = strings.TrimSpace(cleanJSON)
 
 	var result struct {
-		Amount       float64 `json:"amount"`
-		Description  string  `json:"description"`
-		CategoryName string  `json:"category_name"`
-		Date         string  `json:"date"`
+		Amount              float64  `json:"amount"`
+		Description         string   `json:"description"`
+		SuggestedCategories []string `json:"suggested_categories"`
+		Date                string   `json:"date"`
 	}
 
 	if err := json.Unmarshal([]byte(cleanJSON), &result); err != nil {
@@ -606,9 +615,9 @@ Return ONLY a JSON object:
 
 	// Map back to ParsedMessage
 	parsed := ParsedMessage{
-		Amount:       result.Amount,
-		Description:  result.Description,
-		CategoryName: result.CategoryName,
+		Amount:              result.Amount,
+		Description:         result.Description,
+		SuggestedCategories: result.SuggestedCategories,
 	}
 
 	if d, err := time.Parse("2006-01-02", result.Date); err == nil {
@@ -617,28 +626,56 @@ Return ONLY a JSON object:
 		parsed.Date = time.Now().Truncate(24 * time.Hour)
 	}
 
-	// Match category ID
-	for _, cat := range categories {
-		if strings.EqualFold(cat.Name, result.CategoryName) {
-			parsed.CategoryID = &cat.ID
-			break
-		}
-	}
-
 	return parsed, nil
 }
 
-func (b *BotService) showDraftConfirmation(chatID int64, draft *models.DraftTransaction, categories []*models.Category, suggestedCategory string) {
+func (b *BotService) showDraftConfirmation(chatID int64, draft *models.DraftTransaction, allCategories []*models.Category, suggestedNames []string) {
 	msg := fmt.Sprintf("✅ Draft Created!\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s", *draft.Amount, *draft.Description, draft.TransactionDate.Format("2006-01-02"))
 	
-	if suggestedCategory != "" {
-		msg += fmt.Sprintf("\n🤖 AI Suggests: %s", suggestedCategory)
+	mainSuggestion := ""
+	if len(suggestedNames) > 0 {
+		mainSuggestion = suggestedNames[0]
+		msg += fmt.Sprintf("\n🤖 AI Suggests: %s", mainSuggestion)
 	}
 
-	msg += "\n\nTap a category to confirm or choose another:"
+	msg += "\n\nChoose a category to confirm:"
+
+	// Filter categories to only include those suggested by AI (limit to 6)
+	var filteredCats []*models.Category
+	limit := 6
+	for _, name := range suggestedNames {
+		if len(filteredCats) >= limit {
+			break
+		}
+		for _, cat := range allCategories {
+			if strings.EqualFold(cat.Name, name) {
+				// Avoid duplicates
+				exists := false
+				for _, fc := range filteredCats {
+					if fc.ID == cat.ID {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					filteredCats = append(filteredCats, cat)
+				}
+				break
+			}
+		}
+	}
+
+	// If AI failed to suggest any valid categories, show first 6 from all
+	if len(filteredCats) == 0 {
+		if len(allCategories) > limit {
+			filteredCats = allCategories[:limit]
+		} else {
+			filteredCats = allCategories
+		}
+	}
 
 	b.sendReply(chatID, msg)
-	b.showCategoryButtons(chatID, draft, categories, suggestedCategory)
+	b.showCategoryButtons(chatID, draft, filteredCats, mainSuggestion)
 }
 
 func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransaction, categories []*models.Category, aiSuggestion string) {
@@ -668,7 +705,7 @@ func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransa
 		rows = append(rows, keyboard[i:end])
 	}
 
-	b.sendReplyWithKeyboard(chatID, "Choose a category:", &InlineKeyboardMarkup{
+	b.sendReplyWithKeyboard(chatID, "Available Categories:", &InlineKeyboardMarkup{
 		InlineKeyboard: rows,
 	})
 }
@@ -682,11 +719,11 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 }
 
 type ParsedMessage struct {
-	Amount       float64
-	Description  string
-	CategoryID   *uuid.UUID
-	CategoryName string
-	Date         time.Time
+	Amount              float64
+	Description         string
+	CategoryID          *uuid.UUID
+	SuggestedCategories []string
+	Date                time.Time
 }
 
 func (b *BotService) smartParse(text string) ParsedMessage {
@@ -902,7 +939,7 @@ func (b *BotService) handleQuickTemplate(chatID int64, messageID int64, amountSt
 
 	// Show category buttons
 	categories, _ := b.categoryRepo.ListByUserID(context.Background(), link.UserID)
-	b.showDraftConfirmation(chatID, draft, categories, "")
+	b.showDraftConfirmation(chatID, draft, categories, []string{})
 }
 
 // Feature #4: Transaction History
