@@ -314,6 +314,12 @@ func (b *BotService) handleConfirmDraft(chatID int64, messageID int64, draftIDSt
 
 	tx, err := b.draftSvc.Confirm(context.Background(), draftID, link.UserID, confirmReq)
 	if err != nil {
+		// If draft was already confirmed (e.g. user double-tapped), treat as success
+		if err.Error() == "Draft is already confirmed" {
+			log.Printf("[Telegram Bot] Draft already confirmed (double-tap): %s", draftIDStr)
+			b.answerCallbackQuery(callbackID, "Already confirmed!")
+			return
+		}
 		log.Printf("[Telegram Bot] Failed to confirm draft: %v", err)
 		b.answerCallbackQuery(callbackID, "Failed to confirm")
 		return
