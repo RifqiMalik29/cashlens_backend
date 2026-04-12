@@ -683,11 +683,10 @@ func (b *BotService) showDraftConfirmation(chatID int64, draft *models.DraftTran
 		}
 	}
 
-	b.sendReply(chatID, msg)
-	b.showCategoryButtons(chatID, draft, filteredCats, mainSuggestion)
+	b.showCategoryButtons(chatID, draft, filteredCats, mainSuggestion, msg)
 }
 
-func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransaction, categories []*models.Category, aiSuggestion string) {
+func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransaction, categories []*models.Category, aiSuggestion string, msg string) {
 	// Build inline keyboard with categories
 	// Use short IDs (first 8 chars) to stay under 64-byte callback limit
 	var keyboard []InlineKeyboardButton
@@ -714,7 +713,7 @@ func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransa
 		rows = append(rows, keyboard[i:end])
 	}
 
-	b.sendReplyWithKeyboard(chatID, "Available Categories:", &InlineKeyboardMarkup{
+	b.sendReplyWithKeyboard(chatID, msg, &InlineKeyboardMarkup{
 		InlineKeyboard: rows,
 	})
 }
