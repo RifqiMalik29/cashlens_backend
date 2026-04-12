@@ -2,10 +2,13 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
 
 type Database struct {
@@ -47,4 +50,23 @@ func (db *Database) Close() {
 
 func (db *Database) Health(ctx context.Context) error {
 	return db.Pool.Ping(ctx)
+}
+
+// Migrate runs all pending database migrations from the given directory.
+func Migrate(databaseURL, migrationsDir string) error {
+	sqlDB, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to open db for migrations: %w", err)
+	}
+	defer sqlDB.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
+	}
+
+	if err := goose.Up(sqlDB, migrationsDir); err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
+	return nil
 }

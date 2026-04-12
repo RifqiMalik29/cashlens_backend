@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -15,16 +13,16 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
-type TransactionHandler struct {
-	transactionService service.TransactionService
+type DraftHandler struct {
+	draftService service.DraftService
 }
 
-func NewTransactionHandler(transactionService service.TransactionService) *TransactionHandler {
-	return &TransactionHandler{transactionService: transactionService}
+func NewDraftHandler(draftService service.DraftService) *DraftHandler {
+	return &DraftHandler{draftService: draftService}
 }
 
-func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req models.CreateTransactionRequest
+func (h *DraftHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req models.CreateDraftRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -36,7 +34,7 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.transactionService.Create(r.Context(), *userID, req)
+	res, err := h.draftService.Create(r.Context(), *userID, req)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -54,19 +52,18 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h *DraftHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
 		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	status := models.DraftStatus(r.URL.Query().Get("status"))
 
-	res, err := h.transactionService.List(r.Context(), *userID, limit, offset)
+	res, err := h.draftService.List(r.Context(), *userID, status)
 	if err != nil {
-		apperrors.WriteJSONError(w, "Failed to list transactions", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "Failed to list drafts", http.StatusInternalServerError)
 		return
 	}
 
@@ -77,7 +74,7 @@ func (h *TransactionHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h *DraftHandler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
 		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -85,13 +82,13 @@ func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := chi.URLParam(r, "id")
-	transactionID, err := uuid.Parse(idStr)
+	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
-	res, err := h.transactionService.Get(r.Context(), transactionID, *userID)
+	res, err := h.draftService.Get(r.Context(), draftID, *userID)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -109,47 +106,7 @@ func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *TransactionHandler) ListByDateRange(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
-	if !ok {
-		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-
-	if startStr == "" || endStr == "" {
-		apperrors.WriteJSONError(w, "Start and end date query parameters are required", http.StatusBadRequest)
-		return
-	}
-
-	start, err := time.Parse("2006-01-02", startStr)
-	if err != nil {
-		apperrors.WriteJSONError(w, "Invalid start date format (expected YYYY-MM-DD)", http.StatusBadRequest)
-		return
-	}
-
-	end, err := time.Parse("2006-01-02", endStr)
-	if err != nil {
-		apperrors.WriteJSONError(w, "Invalid end date format (expected YYYY-MM-DD)", http.StatusBadRequest)
-		return
-	}
-
-	res, err := h.transactionService.ListByDateRange(r.Context(), *userID, start, end)
-	if err != nil {
-		apperrors.WriteJSONError(w, "Failed to list transactions", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
-		"data": res,
-	})
-}
-
-func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
+func (h *DraftHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
 		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -157,19 +114,19 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := chi.URLParam(r, "id")
-	transactionID, err := uuid.Parse(idStr)
+	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
-	var req models.UpdateTransactionRequest
+	var req models.ConfirmDraftRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	err = h.transactionService.Update(r.Context(), transactionID, *userID, req)
+	res, err := h.draftService.Confirm(r.Context(), draftID, *userID, req)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -181,13 +138,13 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]any{
-		"message": "Transaction updated successfully",
+		"data": res,
 	})
 }
 
-func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *DraftHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {
 		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -195,13 +152,13 @@ func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := chi.URLParam(r, "id")
-	transactionID, err := uuid.Parse(idStr)
+	draftID, err := uuid.Parse(idStr)
 	if err != nil {
-		apperrors.WriteJSONError(w, "Invalid transaction ID", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid draft ID", http.StatusBadRequest)
 		return
 	}
 
-	err = h.transactionService.Delete(r.Context(), transactionID, *userID)
+	err = h.draftService.Delete(r.Context(), draftID, *userID)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -215,6 +172,6 @@ func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
-		"message": "Transaction deleted successfully",
+		"message": "Draft deleted successfully",
 	})
 }

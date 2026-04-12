@@ -26,8 +26,15 @@ type Category struct {
 }
 
 type CreateCategoryRequest struct {
-	Name  string       `json:"name"`
-	Type  CategoryType `json:"type"`
-	Icon  string       `json:"icon,omitempty"`
-	Color string       `json:"color,omitempty"`
+	Name  string       `json:"name" validate:"required,max=100"`
+	Type  CategoryType `json:"type" validate:"required,oneof=income expense"`
+	Icon  string       `json:"icon,omitempty" validate:"max=50"`
+	Color string       `json:"color,omitempty" validate:"max=20"`
+}
+
+type UpdateCategoryRequest struct {
+	Name  *string       `json:"name,omitempty" validate:"omitempty,max=100"`
+	Type  *CategoryType `json:"type,omitempty" validate:"omitempty,oneof=income expense"`
+	Icon  *string       `json:"icon,omitempty" validate:"omitempty,max=50"`
+	Color *string       `json:"color,omitempty" validate:"omitempty,max=20"`
 }

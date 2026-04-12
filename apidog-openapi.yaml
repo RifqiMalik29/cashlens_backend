@@ -1,0 +1,1349 @@
+openapi: 3.0.3
+info:
+  title: CashLens API
+  description: Financial tracking application API with JWT authentication and refresh tokens
+  version: 1.0.0
+  contact:
+    name: CashLens Team
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://your-domain.com
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/login or /auth/refresh
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        name:
+          type: string
+          example: "John Doe"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AuthRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "securePassword123"
+        name:
+          type: string
+          maxLength: 100
+          example: "John Doe"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "securePassword123"
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          example: "long_refresh_token_string"
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+              example: "new_access_token_here"
+            refresh_token:
+              type: string
+              example: "new_refresh_token_here"
+            token_type:
+              type: string
+              example: "Bearer"
+            expires_in:
+              type: integer
+              example: 86400
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            Email: "Invalid email format"
+            Password: "Password must be at least 8 characters"
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Food & Dining"
+        type:
+          type: string
+          enum: [expense, income]
+          example: "expense"
+        icon:
+          type: string
+          example: "utensils"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateCategoryRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          example: "Food & Dining"
+        type:
+          type: string
+          enum: [expense, income]
+          example: "expense"
+        icon:
+          type: string
+          example: "utensils"
+
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Food & Restaurants"
+        type:
+          type: string
+          enum: [expense, income]
+        icon:
+          type: string
+          example: "utensils"
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 50000
+        type:
+          type: string
+          enum: [expense, income]
+          example: "expense"
+        description:
+          type: string
+          example: "Lunch at restaurant"
+        date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTransactionRequest:
+      type: object
+      required:
+        - category_id
+        - amount
+        - type
+        - date
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 50000
+        type:
+          type: string
+          enum: [expense, income]
+          example: "expense"
+        description:
+          type: string
+          example: "Lunch at restaurant"
+        date:
+          type: string
+          format: date-time
+          example: "2026-04-12T12:30:00Z"
+
+    UpdateTransactionRequest:
+      type: object
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 75000
+        description:
+          type: string
+          example: "Updated description"
+        date:
+          type: string
+          format: date-time
+
+    Budget:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 1000000
+        period:
+          type: string
+          enum: [daily, weekly, monthly, yearly]
+          example: "monthly"
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateBudgetRequest:
+      type: object
+      required:
+        - category_id
+        - amount
+        - period
+        - start_date
+        - end_date
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 1000000
+        period:
+          type: string
+          enum: [daily, weekly, monthly, yearly]
+          example: "monthly"
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+
+    UpdateBudgetRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          example: 1500000
+        period:
+          type: string
+          enum: [daily, weekly, monthly, yearly]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+
+    Draft:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [telegram, receipt_scan, manual]
+          example: "telegram"
+        status:
+          type: string
+          enum: [pending, confirmed, rejected]
+          example: "pending"
+        fields:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateDraftRequest:
+      type: object
+      required:
+        - source
+      properties:
+        source:
+          type: string
+          enum: [telegram, receipt_scan, manual]
+          example: "manual"
+        fields:
+          type: object
+          additionalProperties: true
+          example:
+            amount: 50000
+            description: "Coffee"
+
+    ConfirmDraftRequest:
+      type: object
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          example: "Confirmed transaction"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        database:
+          type: string
+          example: "healthy"
+
+    SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Success message"
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check server and database health
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                database: "healthy"
+
+  /api/v1/auth/register:
+    post:
+      summary: Register new user
+      description: Create a new user account
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+            example:
+              email: "user@example.com"
+              password: "securePassword123"
+              name: "John Doe"
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                user:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  email: "user@example.com"
+                  name: "John Doe"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+        '400':
+          description: Validation error or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  value:
+                    error: "Validation failed"
+                    details:
+                      Email: "Invalid email format"
+                      Password: "Password must be at least 8 characters"
+                email_exists:
+                  value:
+                    error: "Email is already registered"
+
+  /api/v1/auth/login:
+    post:
+      summary: Login user
+      description: Authenticate user and receive access token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "user@example.com"
+              password: "securePassword123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                user:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  email: "user@example.com"
+                  name: "John Doe"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid email or password"
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh tokens
+      description: Get new access and refresh tokens using current refresh token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            example:
+              refresh_token: "long_refresh_token_string_here"
+      responses:
+        '200':
+          description: Tokens refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+              example:
+                data:
+                  access_token: "new_access_token_here"
+                  refresh_token: "new_refresh_token_here"
+                  token_type: "Bearer"
+                  expires_in: 86400
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                expired:
+                  value:
+                    error: "refresh token expired"
+                revoked:
+                  value:
+                    error: "token has been revoked"
+
+  /api/v1/auth/me:
+    get:
+      summary: Get current user
+      description: Get authenticated user profile
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  email: "user@example.com"
+                  name: "John Doe"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+
+  /api/v1/auth/logout:
+    post:
+      summary: Logout user
+      description: Revoke all refresh tokens for the authenticated user
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Logged out successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+
+  /api/v1/categories:
+    post:
+      summary: Create category
+      description: Create a new expense/income category
+      tags:
+        - Categories
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+            example:
+              name: "Food & Dining"
+              type: "expense"
+              icon: "utensils"
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440001"
+                  name: "Food & Dining"
+                  type: "expense"
+                  icon: "utensils"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+    get:
+      summary: List categories
+      description: Get all categories for the authenticated user
+      tags:
+        - Categories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+              example:
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    user_id: "550e8400-e29b-41d4-a716-446655440001"
+                    name: "Food & Dining"
+                    type: "expense"
+                    icon: "utensils"
+                    created_at: "2026-04-12T10:30:00Z"
+                    updated_at: "2026-04-12T10:30:00Z"
+
+  /api/v1/categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get category
+      description: Get a single category by ID
+      tags:
+        - Categories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Category retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
+              example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440001"
+                  name: "Food & Dining"
+                  type: "expense"
+                  icon: "utensils"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+    put:
+      summary: Update category
+      description: Update an existing category
+      tags:
+        - Categories
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryRequest'
+            example:
+              name: "Food & Restaurants"
+              type: "expense"
+              icon: "utensils"
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Category updated successfully"
+    delete:
+      summary: Delete category
+      description: Delete a category
+      tags:
+        - Categories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Category deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Category deleted successfully"
+
+  /api/v1/transactions:
+    post:
+      summary: Create transaction
+      description: Create a new financial transaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransactionRequest'
+            example:
+              category_id: "550e8400-e29b-41d4-a716-446655440000"
+              amount: 50000
+              type: "expense"
+              description: "Lunch at restaurant"
+              date: "2026-04-12T12:30:00Z"
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+              example:
+                data:
+                  id: "660e8400-e29b-41d4-a716-446655440001"
+                  category_id: "550e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  amount: 50000
+                  type: "expense"
+                  description: "Lunch at restaurant"
+                  date: "2026-04-12T12:30:00Z"
+                  created_at: "2026-04-12T12:35:00Z"
+                  updated_at: "2026-04-12T12:35:00Z"
+    get:
+      summary: List transactions
+      description: Get all transactions for the authenticated user
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Number of transactions to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of transactions to skip
+      responses:
+        '200':
+          description: Transactions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+              example:
+                data:
+                  - id: "660e8400-e29b-41d4-a716-446655440001"
+                    category_id: "550e8400-e29b-41d4-a716-446655440000"
+                    amount: 50000
+                    type: "expense"
+                    description: "Lunch at restaurant"
+                    date: "2026-04-12T12:30:00Z"
+                    created_at: "2026-04-12T12:35:00Z"
+
+  /api/v1/transactions/date-range:
+    get:
+      summary: List transactions by date range
+      description: Get transactions filtered by start and end date
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Start date (YYYY-MM-DD)
+        - name: end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: End date (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Transactions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+              example:
+                data:
+                  - id: "660e8400-e29b-41d4-a716-446655440001"
+                    amount: 50000
+                    type: "expense"
+                    description: "Lunch at restaurant"
+                    date: "2026-04-12T12:30:00Z"
+
+  /api/v1/transactions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get transaction
+      description: Get a single transaction by ID
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Transaction retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+              example:
+                data:
+                  id: "660e8400-e29b-41d4-a716-446655440001"
+                  category_id: "550e8400-e29b-41d4-a716-446655440000"
+                  amount: 50000
+                  type: "expense"
+                  description: "Lunch at restaurant"
+                  date: "2026-04-12T12:30:00Z"
+                  created_at: "2026-04-12T12:35:00Z"
+    put:
+      summary: Update transaction
+      description: Update an existing transaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTransactionRequest'
+            example:
+              amount: 75000
+              description: "Updated lunch expense"
+              date: "2026-04-12T12:30:00Z"
+      responses:
+        '200':
+          description: Transaction updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Transaction updated successfully"
+    delete:
+      summary: Delete transaction
+      description: Delete a transaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Transaction deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Transaction deleted successfully"
+
+  /api/v1/budgets:
+    post:
+      summary: Create budget
+      description: Create a new budget for a category
+      tags:
+        - Budgets
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBudgetRequest'
+            example:
+              category_id: "550e8400-e29b-41d4-a716-446655440000"
+              amount: 1000000
+              period: "monthly"
+              start_date: "2026-04-01T00:00:00Z"
+              end_date: "2026-04-30T23:59:59Z"
+      responses:
+        '201':
+          description: Budget created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Budget'
+              example:
+                data:
+                  id: "770e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  category_id: "550e8400-e29b-41d4-a716-446655440000"
+                  amount: 1000000
+                  period: "monthly"
+                  start_date: "2026-04-01T00:00:00Z"
+                  end_date: "2026-04-30T23:59:59Z"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+    get:
+      summary: List budgets
+      description: Get all budgets for the authenticated user
+      tags:
+        - Budgets
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Budgets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Budget'
+              example:
+                data:
+                  - id: "770e8400-e29b-41d4-a716-446655440000"
+                    user_id: "550e8400-e29b-41d4-a716-446655440000"
+                    amount: 1000000
+                    period: "monthly"
+                    start_date: "2026-04-01T00:00:00Z"
+                    end_date: "2026-04-30T23:59:59Z"
+                    created_at: "2026-04-12T10:30:00Z"
+
+  /api/v1/budgets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get budget
+      description: Get a single budget by ID
+      tags:
+        - Budgets
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Budget retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Budget'
+              example:
+                data:
+                  id: "770e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  amount: 1000000
+                  period: "monthly"
+                  start_date: "2026-04-01T00:00:00Z"
+                  end_date: "2026-04-30T23:59:59Z"
+                  created_at: "2026-04-12T10:30:00Z"
+    put:
+      summary: Update budget
+      description: Update an existing budget
+      tags:
+        - Budgets
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetRequest'
+            example:
+              amount: 1500000
+              period: "monthly"
+      responses:
+        '200':
+          description: Budget updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Budget updated successfully"
+    delete:
+      summary: Delete budget
+      description: Delete a budget
+      tags:
+        - Budgets
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Budget deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Budget deleted successfully"
+
+  /api/v1/drafts:
+    post:
+      summary: Create draft
+      description: Create a draft transaction for later confirmation
+      tags:
+        - Drafts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDraftRequest'
+            example:
+              source: "manual"
+              fields:
+                amount: 50000
+                description: "Coffee"
+      responses:
+        '201':
+          description: Draft created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Draft'
+              example:
+                data:
+                  id: "880e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  source: "manual"
+                  status: "pending"
+                  fields:
+                    amount: 50000
+                    description: "Coffee"
+                  created_at: "2026-04-12T10:30:00Z"
+                  updated_at: "2026-04-12T10:30:00Z"
+    get:
+      summary: List drafts
+      description: Get all drafts for the authenticated user
+      tags:
+        - Drafts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, rejected]
+          description: Filter by status
+      responses:
+        '200':
+          description: Drafts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Draft'
+              example:
+                data:
+                  - id: "880e8400-e29b-41d4-a716-446655440000"
+                    user_id: "550e8400-e29b-41d4-a716-446655440000"
+                    source: "manual"
+                    status: "pending"
+                    fields:
+                      amount: 50000
+                      description: "Coffee"
+                    created_at: "2026-04-12T10:30:00Z"
+
+  /api/v1/drafts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get draft
+      description: Get a single draft by ID
+      tags:
+        - Drafts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Draft retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Draft'
+              example:
+                data:
+                  id: "880e8400-e29b-41d4-a716-446655440000"
+                  user_id: "550e8400-e29b-41d4-a716-446655440000"
+                  source: "manual"
+                  status: "pending"
+                  fields:
+                    amount: 50000
+                    description: "Coffee"
+                  created_at: "2026-04-12T10:30:00Z"
+    delete:
+      summary: Delete draft
+      description: Delete a draft
+      tags:
+        - Drafts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Draft deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Draft deleted successfully"
+
+  /api/v1/drafts/{id}/confirm:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Confirm draft
+      description: Confirm a draft to create a real transaction
+      tags:
+        - Drafts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmDraftRequest'
+            example:
+              category_id: "550e8400-e29b-41d4-a716-446655440000"
+              description: "Confirmed coffee expense"
+      responses:
+        '201':
+          description: Draft confirmed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+              example:
+                data:
+                  id: "660e8400-e29b-41d4-a716-446655440002"
+                  category_id: "550e8400-e29b-41d4-a716-446655440000"
+                  amount: 50000
+                  type: "expense"
+                  description: "Confirmed coffee expense"
+                  date: "2026-04-12T10:30:00Z"
+                  created_at: "2026-04-12T10:35:00Z"
+
+  /api/v1/receipts/scan:
+    post:
+      summary: Scan receipt
+      description: Scan a receipt image and extract transaction data using AI
+      tags:
+        - Receipts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Receipt image (JPEG or PNG, max 10MB)
+              required:
+                - image
+      responses:
+        '200':
+          description: Receipt scanned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+              example:
+                data:
+                  amount: 50000
+                  currency: "IDR"
+                  date: "2026-04-12"
+                  merchant: "Restaurant Name"
+                  category: "cat_food"
+                  confidence: 95
+        '501':
+          description: Gemini API not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Gemini API key not configured"
