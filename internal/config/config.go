@@ -14,6 +14,7 @@ type Config struct {
 	Database  DatabaseConfig
 	JWT       JWTConfig
 	RateLimit RateLimitConfig
+	GeminiAPI Gemini
 }
 
 type ServerConfig struct {
@@ -35,6 +36,10 @@ type RateLimitConfig struct {
 	Window   time.Duration
 }
 
+type Gemini struct {
+	APIKey string
+}
+
 func Load() (*Config, error) {
 	// Load .env file (ignore error if not found)
 	_ = godotenv.Load()
@@ -54,6 +59,9 @@ func Load() (*Config, error) {
 		RateLimit: RateLimitConfig{
 			Requests: parseInt(getEnv("RATE_LIMIT_REQUESTS", "100"), 100),
 			Window:   parseDuration(getEnv("RATE_LIMIT_WINDOW", "1m"), time.Minute),
+		},
+		GeminiAPI: Gemini{
+			APIKey: os.Getenv("GEMINI_API_KEY"),
 		},
 	}
 

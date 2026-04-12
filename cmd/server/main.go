@@ -60,7 +60,7 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler("") // TODO: Add GEMINI_API_KEY to config
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey)
 	telegramHandler := handlers.NewTelegramHandler(draftService, "") // TODO: Add TELEGRAM_BOT_TOKEN to config
 
 	// Setup router
