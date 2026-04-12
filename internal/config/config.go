@@ -28,13 +28,18 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret     string
-	Expiration time.Duration
+	Secret             string
+	Expiration         time.Duration
+	RefreshExpiration  time.Duration
+	MaxReuseWindow     time.Duration // For rotation: allow reusing token briefly
 }
 
 type RateLimitConfig struct {
 	Requests int
 	Window   time.Duration
+	// Auth-specific limits (typically stricter)
+	AuthRequests int
+	AuthWindow   time.Duration
 }
 
 type Gemini struct {
@@ -58,12 +63,16 @@ func Load() (*Config, error) {
 			URL: getEnv("DATABASE_URL", ""),
 		},
 		JWT: JWTConfig{
-			Secret:     getEnv("JWT_SECRET", ""),
-			Expiration: parseDuration(getEnv("JWT_EXPIRATION", "24h"), 24*time.Hour),
+			Secret:             getEnv("JWT_SECRET", ""),
+			Expiration:         parseDuration(getEnv("JWT_EXPIRATION", "24h"), 24*time.Hour),
+			RefreshExpiration:  parseDuration(getEnv("JWT_REFRESH_EXPIRATION", "168h"), 168*time.Hour), // 7 days
+			MaxReuseWindow:     parseDuration(getEnv("JWT_MAX_REUSE_WINDOW", "5m"), 5*time.Minute),     // 5 minutes
 		},
 		RateLimit: RateLimitConfig{
-			Requests: parseInt(getEnv("RATE_LIMIT_REQUESTS", "100"), 100),
-			Window:   parseDuration(getEnv("RATE_LIMIT_WINDOW", "1m"), time.Minute),
+			Requests:     parseInt(getEnv("RATE_LIMIT_REQUESTS", "100"), 100),
+			Window:       parseDuration(getEnv("RATE_LIMIT_WINDOW", "1m"), time.Minute),
+			AuthRequests: parseInt(getEnv("RATE_LIMIT_AUTH_REQUESTS", "20"), 20),
+			AuthWindow:   parseDuration(getEnv("RATE_LIMIT_AUTH_WINDOW", "5m"), 5*time.Minute),
 		},
 		GeminiAPI: Gemini{
 			APIKey: os.Getenv("GEMINI_API_KEY"),

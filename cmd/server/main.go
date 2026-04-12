@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,16 +16,21 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/database"
 	"github.com/rifqimalik/cashlens-backend/internal/handlers"
 	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
 )
 
 func main() {
+	// Initialize structured logger
+	log := logger.Init()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Setup context
@@ -35,10 +39,11 @@ func main() {
 	// Initialize database
 	db, err := database.New(ctx, cfg.Database.URL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
-	log.Println("Database connected successfully")
+	log.Info("Database connected successfully")
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db.Pool)
@@ -47,9 +52,18 @@ func main() {
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
 	draftRepo := repository.NewDraftRepository(db.Pool)
 	chatRepo := repository.NewChatLinkRepository(db.Pool)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	refreshTokenService := service.NewRefreshTokenService(
+		refreshTokenRepo,
+		userRepo,
+		cfg.JWT.Secret,
+		cfg.JWT.Expiration,
+		cfg.JWT.RefreshExpiration,
+		cfg.JWT.MaxReuseWindow,
+	)
 	categoryService := service.NewCategoryService(categoryRepo)
 	transactionService := service.NewTransactionService(transactionRepo)
 	budgetService := service.NewBudgetService(budgetRepo)
@@ -57,7 +71,7 @@ func main() {
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, refreshTokenService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
@@ -81,9 +95,9 @@ func main() {
 			categoryRepo,
 		)
 		go botService.StartPolling(context.Background())
-		log.Println("Telegram bot started")
+		log.Info("Telegram bot started")
 	} else {
-		log.Println("Telegram bot token not configured - skipping bot initialization")
+		log.Info("Telegram bot token not configured - skipping bot initialization")
 	}
 
 	// Setup router
@@ -92,26 +106,31 @@ func main() {
 	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(custommiddleware.CORS)
-	r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
 
-	// Health check (public)
+	// Health check (public, no rate limiting)
 	r.Get("/health", healthHandler.Check)
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public auth routes
-		r.Post("/auth/register", authHandler.Register)
-		r.Post("/auth/login", authHandler.Login)
+		// Public auth routes (stricter rate limiting)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
+			r.Post("/auth/register", authHandler.Register)
+			r.Post("/auth/login", authHandler.Login)
+			r.Post("/auth/refresh", authHandler.Refresh)
+		})
 
-		// Protected routes
+		// Protected routes (standard rate limiting)
 		r.Group(func(r chi.Router) {
 			r.Use(custommiddleware.Auth(authService))
+			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
+			r.Post("/auth/logout", authHandler.Logout)
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
@@ -158,9 +177,13 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Server starting on port %s (environment: %s)", cfg.Server.Port, cfg.Server.Environment)
+		log.Info("Server starting",
+			"port", cfg.Server.Port,
+			"environment", cfg.Server.Environment,
+		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+			log.Error("Server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -169,13 +192,14 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Server shutting down...")
+	log.Info("Server shutting down...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Error("Server forced to shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Server stopped gracefully")
+	log.Info("Server stopped gracefully")
 }
