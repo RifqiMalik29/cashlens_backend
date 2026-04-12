@@ -14,7 +14,7 @@ type Transaction struct {
 	Description     *string                `json:"description,omitempty"`
 	TransactionDate time.Time              `json:"transaction_date"`
 	AttachmentURL   *string                `json:"attachment_url,omitempty"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
 }

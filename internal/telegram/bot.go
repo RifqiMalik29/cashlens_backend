@@ -534,16 +534,17 @@ func (b *BotService) parseWithAI(text string, categories []*models.Category) (Pa
 		catNames = append(catNames, cat.Name)
 	}
 
+	now := time.Now()
 	prompt := fmt.Sprintf(`You are a financial assistant. Parse this message into a JSON object.
 Message: "%s"
-Current Year: %d
+Today's Date: %s
 Available Categories: %s
 
 Rules:
 1. Extract "amount" as a number. Convert "rb" or "k" to thousands (e.g., 50rb -> 50000).
 2. "description" should be a clean summary of the spending.
 3. "suggested_categories" must be a list of up to 6 category names from the Available Categories list that might match this transaction, ranked by relevance.
-4. "date" should be in YYYY-MM-DD format. Assume today if not specified.
+4. "date" should be in YYYY-MM-DD format. If no date is mentioned, use today's date exactly as provided above.
 
 Return ONLY a JSON object:
 {
@@ -551,7 +552,7 @@ Return ONLY a JSON object:
   "description": string,
   "suggested_categories": ["string", "string", ...],
   "date": "YYYY-MM-DD"
-}`, text, time.Now().Year(), strings.Join(catNames, ", "))
+}`, text, now.Format("2006-01-02"), strings.Join(catNames, ", "))
 
 	requestBody := gemini.GeminiRequest{
 		Contents: []gemini.GeminiContent{
@@ -620,10 +621,18 @@ Return ONLY a JSON object:
 		SuggestedCategories: result.SuggestedCategories,
 	}
 
+	today := time.Now().Truncate(24 * time.Hour)
 	if d, err := time.Parse("2006-01-02", result.Date); err == nil {
-		parsed.Date = d
+		switch {
+		case d.After(today):
+			parsed.Date = today
+		case d.Before(today.AddDate(-1, 0, 0)):
+			parsed.Date = today
+		default:
+			parsed.Date = d
+		}
 	} else {
-		parsed.Date = time.Now().Truncate(24 * time.Hour)
+		parsed.Date = today
 	}
 
 	return parsed, nil
