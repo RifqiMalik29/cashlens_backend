@@ -184,28 +184,21 @@ func (b *BotService) handleCallbackQuery(query CallbackQuery) {
 	}
 }
 
-func (b *BotService) handleSetCategory(chatID int64, messageID int64, shortDraftID string, shortCatID string, callbackID string) {
+func (b *BotService) handleSetCategory(chatID int64, messageID int64, fullDraftIDStr string, shortCatID string, callbackID string) {
+	draftID, err := uuid.Parse(fullDraftIDStr)
+	if err != nil {
+		b.answerCallbackQuery(callbackID, "Invalid draft ID")
+		return
+	}
+
 	link, err := b.chatRepo.GetByChatID(context.Background(), fmt.Sprintf("%d", chatID), "telegram")
 	if err != nil {
 		b.answerCallbackQuery(callbackID, "Account not linked")
 		return
 	}
 
-	// Find draft by short ID prefix
-	drafts, err := b.draftRepo.ListByUserID(context.Background(), link.UserID, models.DraftStatusPending)
+	draft, err := b.draftRepo.GetByID(context.Background(), draftID)
 	if err != nil {
-		b.answerCallbackQuery(callbackID, "Failed to find draft")
-		return
-	}
-
-	var draft *models.DraftTransaction
-	for _, d := range drafts {
-		if strings.HasPrefix(d.ID.String(), shortDraftID) {
-			draft = d
-			break
-		}
-	}
-	if draft == nil {
 		b.answerCallbackQuery(callbackID, "Draft not found")
 		return
 	}
@@ -694,18 +687,17 @@ func (b *BotService) showDraftConfirmation(chatID int64, draft *models.DraftTran
 
 func (b *BotService) showCategoryButtons(chatID int64, draft *models.DraftTransaction, categories []*models.Category, aiSuggestion string, msg string) {
 	// Build inline keyboard with categories
-	// Use short IDs (first 8 chars) to stay under 64-byte callback limit
+	// Use full draft UUID (36 chars) + short cat ID (8 chars) = 52 bytes, under 64-byte callback limit
 	var keyboard []InlineKeyboardButton
 	for _, cat := range categories {
 		emoji := "📌"
 		if cat.Name == aiSuggestion {
 			emoji = "✨"
 		}
-		shortDraft := draft.ID.String()[:8]
 		shortCat := cat.ID.String()[:8]
 		keyboard = append(keyboard, InlineKeyboardButton{
 			Text:         fmt.Sprintf("%s %s", emoji, cat.Name),
-			CallbackData: fmt.Sprintf("setcat:%s:%s", shortDraft, shortCat),
+			CallbackData: fmt.Sprintf("setcat:%s:%s", draft.ID.String(), shortCat),
 		})
 	}
 
