@@ -11,12 +11,12 @@ import (
 
 // Mock repositories for testing
 type MockCategoryRepository struct {
-	CreateFunc        func(ctx context.Context, category *models.Category) error
-	GetByIDFunc       func(ctx context.Context, id uuid.UUID) (*models.Category, error)
-	ListByUserIDFunc  func(ctx context.Context, userID uuid.UUID) ([]*models.Category, error)
-	ListSystemFunc    func(ctx context.Context) ([]*models.Category, error)
-	UpdateFunc        func(ctx context.Context, category *models.Category) error
-	DeleteFunc        func(ctx context.Context, id uuid.UUID) error
+	CreateFunc       func(ctx context.Context, category *models.Category) error
+	GetByIDFunc      func(ctx context.Context, id uuid.UUID) (*models.Category, error)
+	ListByUserIDFunc func(ctx context.Context, userID uuid.UUID) ([]*models.Category, error)
+	ListSystemFunc   func(ctx context.Context) ([]*models.Category, error)
+	UpdateFunc       func(ctx context.Context, category *models.Category) error
+	DeleteFunc       func(ctx context.Context, id uuid.UUID) error
 }
 
 func (m *MockCategoryRepository) Create(ctx context.Context, category *models.Category) error {
@@ -73,8 +73,8 @@ func TestCategoryService_Create(t *testing.T) {
 		{
 			name: "empty name",
 			req: models.CreateCategoryRequest{
-				Name:  "",
-				Type:  models.CategoryTypeExpense,
+				Name: "",
+				Type: models.CategoryTypeExpense,
 			},
 			expectError: true,
 			errorType:   "name cannot be empty",
@@ -82,8 +82,8 @@ func TestCategoryService_Create(t *testing.T) {
 		{
 			name: "invalid type",
 			req: models.CreateCategoryRequest{
-				Name:  "Invalid",
-				Type:  "invalid_type",
+				Name: "Invalid",
+				Type: "invalid_type",
 			},
 			expectError: true,
 			errorType:   "invalid category type",
@@ -353,11 +353,11 @@ func TestCategoryService_Update(t *testing.T) {
 		{
 			name: "cannot update system category",
 			category: &models.Category{
-				ID:       categoryID,
-				UserID:   nil,
-				Name:     "Salary",
-				Type:     models.CategoryTypeIncome,
-				IsSystem: true,
+				ID:        categoryID,
+				UserID:    nil,
+				Name:      "Salary",
+				Type:      models.CategoryTypeIncome,
+				IsSystem:  true,
 				UpdatedAt: time.Now(),
 			},
 			req: models.UpdateCategoryRequest{

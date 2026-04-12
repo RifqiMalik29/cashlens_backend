@@ -20,13 +20,13 @@ type DraftService interface {
 }
 
 type draftService struct {
-	draftRepo     repository.DraftRepository
+	draftRepo       repository.DraftRepository
 	transactionRepo repository.TransactionRepository
 }
 
 func NewDraftService(draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository) DraftService {
 	return &draftService{
-		draftRepo:     draftRepo,
+		draftRepo:       draftRepo,
 		transactionRepo: transactionRepo,
 	}
 }

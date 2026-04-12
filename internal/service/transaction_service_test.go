@@ -12,12 +12,12 @@ import (
 
 // Mock Transaction Repository
 type MockTransactionRepository struct {
-	CreateFunc         func(ctx context.Context, tx *models.Transaction) error
-	GetByIDFunc        func(ctx context.Context, id uuid.UUID) (*models.Transaction, error)
-	ListByUserIDFunc   func(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error)
+	CreateFunc          func(ctx context.Context, tx *models.Transaction) error
+	GetByIDFunc         func(ctx context.Context, id uuid.UUID) (*models.Transaction, error)
+	ListByUserIDFunc    func(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error)
 	ListByDateRangeFunc func(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]*models.TransactionWithCategory, error)
-	UpdateFunc         func(ctx context.Context, tx *models.Transaction) error
-	DeleteFunc         func(ctx context.Context, id uuid.UUID) error
+	UpdateFunc          func(ctx context.Context, tx *models.Transaction) error
+	DeleteFunc          func(ctx context.Context, id uuid.UUID) error
 }
 
 func (m *MockTransactionRepository) Create(ctx context.Context, tx *models.Transaction) error {
@@ -46,12 +46,12 @@ func (m *MockTransactionRepository) Delete(ctx context.Context, id uuid.UUID) er
 
 // Mock Draft Repository
 type MockDraftRepository struct {
-	CreateFunc             func(ctx context.Context, draft *models.DraftTransaction) error
-	GetByIDFunc            func(ctx context.Context, id uuid.UUID) (*models.DraftTransaction, error)
-	ListByUserIDFunc       func(ctx context.Context, userID uuid.UUID, status models.DraftStatus) ([]*models.DraftTransaction, error)
-	UpdateFunc             func(ctx context.Context, draft *models.DraftTransaction) error
-	DeleteFunc             func(ctx context.Context, id uuid.UUID) error
-	ConfirmFunc            func(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error
+	CreateFunc       func(ctx context.Context, draft *models.DraftTransaction) error
+	GetByIDFunc      func(ctx context.Context, id uuid.UUID) (*models.DraftTransaction, error)
+	ListByUserIDFunc func(ctx context.Context, userID uuid.UUID, status models.DraftStatus) ([]*models.DraftTransaction, error)
+	UpdateFunc       func(ctx context.Context, draft *models.DraftTransaction) error
+	DeleteFunc       func(ctx context.Context, id uuid.UUID) error
+	ConfirmFunc      func(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error
 }
 
 func (m *MockDraftRepository) Create(ctx context.Context, draft *models.DraftTransaction) error {

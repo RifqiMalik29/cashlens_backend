@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "github.com/rifqimalik/cashlens-backend/internal/logger" // For future structured logging migration
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
@@ -462,7 +463,11 @@ func (b *BotService) handleLink(chatID int64, email string, username *string) {
 		return
 	}
 
-	b.sendReply(chatID, fmt.Sprintf("✅ Account Linked!\n\nWelcome, %s!\nYou can now send transactions directly from here.", user.Name))
+	name := "User"
+	if user.Name != nil {
+		name = *user.Name
+	}
+	b.sendReply(chatID, fmt.Sprintf("✅ Account Linked!\n\nWelcome, %s!\nYou can now send transactions directly from here.", name))
 }
 
 func (b *BotService) handleMessage(chatID int64, text string) {

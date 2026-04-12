@@ -37,37 +37,19 @@ func NewAuthService(userRepo repository.UserRepository, jwtSecret string, jwtExp
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
 
 func (s *authService) Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error) {
-	// TODO: Implement validation
-	if req.Email == "" {
-		return nil, fmt.Errorf("Email is empty")
-	}
-
-	if req.Password == "" {
-		return nil, fmt.Errorf("Password is empty")
-	}
-
-	if !isEmailValid(req.Email) {
-		return nil, fmt.Errorf("Invalid Email")
-	}
-
-	if len(req.Password) < 8 {
-		return nil, fmt.Errorf("Password length must be 8 characters or more")
-	}
-
-	if len(req.Name) > 100 {
-		return nil, fmt.Errorf("Name is too long")
-	}
-	// TODO: Check if email already exists
+	// Check if email already exists
 	user, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if user != nil && err == nil {
-		return nil, fmt.Errorf("Email is already exist")
+		return nil, fmt.Errorf("Email is already registered")
 	}
-	// TODO: Hash password
+
+	// Hash password
 	p, err := hashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to hash password: %w", err)
 	}
-	// TODO: Create user
+
+	// Create user
 	user = &models.User{
 		ID:           uuid.New(),
 		Email:        req.Email,
@@ -80,9 +62,10 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 	if err != nil {
 		return nil, fmt.Errorf("Register failed: %w", err)
 	}
-	// TODO: Generate JWT token
+
+	// Generate JWT token
 	token, err := generateToken(user.ID, s.jwtSecret, s.jwtExpiration)
-	if token == "" && err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("Token failed to produce: %w", err)
 	}
 
@@ -93,17 +76,18 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 }
 
 func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error) {
-	// TODO: Implement login logic
 	res, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, fmt.Errorf("User not found: %w", err)
 	}
-	// TODO: Verify password
+
+	// Verify password
 	status := checkPasswordHash(req.Password, res.PasswordHash)
 	if !status {
-		return nil, fmt.Errorf("Invalid Email or Password")
+		return nil, fmt.Errorf("Invalid email or password")
 	}
-	// TODO: Generate JWT token
+
+	// Generate JWT token
 	token, err := generateToken(res.ID, s.jwtSecret, s.jwtExpiration)
 	if err != nil {
 		return nil, fmt.Errorf("Token failed to produced: %w", err)
@@ -116,7 +100,6 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 }
 
 func (s *authService) ValidateToken(tokenString string) (*uuid.UUID, error) {
-	// TODO: Implement JWT validation
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
