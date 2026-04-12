@@ -44,12 +44,14 @@ func main() {
 	categoryRepo := repository.NewCategoryRepository(db.Pool)
 	transactionRepo := repository.NewTransactionRepository(db.Pool)
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
+	draftRepo := repository.NewDraftRepository(db.Pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	categoryService := service.NewCategoryService(categoryRepo)
 	transactionService := service.NewTransactionService(transactionRepo)
 	budgetService := service.NewBudgetService(budgetRepo)
+	draftService := service.NewDraftService(draftRepo, transactionRepo)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
@@ -57,6 +59,9 @@ func main() {
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
+	draftHandler := handlers.NewDraftHandler(draftService)
+	receiptHandler := handlers.NewReceiptHandler("") // TODO: Add GEMINI_API_KEY to config
+	telegramHandler := handlers.NewTelegramHandler(draftService, "") // TODO: Add TELEGRAM_BOT_TOKEN to config
 
 	// Setup router
 	r := chi.NewRouter()
@@ -106,7 +111,20 @@ func main() {
 			r.Get("/budgets/{id}", budgetHandler.Get)
 			r.Put("/budgets/{id}", budgetHandler.Update)
 			r.Delete("/budgets/{id}", budgetHandler.Delete)
+
+			// Drafts
+			r.Post("/drafts", draftHandler.Create)
+			r.Get("/drafts", draftHandler.List)
+			r.Get("/drafts/{id}", draftHandler.Get)
+			r.Post("/drafts/{id}/confirm", draftHandler.Confirm)
+			r.Delete("/drafts/{id}", draftHandler.Delete)
+
+			// Receipt Scanner
+			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
 		})
+
+		// Public webhook routes (no auth required)
+		r.Post("/webhooks/telegram", telegramHandler.Webhook)
 	})
 
 	// Setup HTTP server
