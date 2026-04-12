@@ -36,6 +36,13 @@ func main() {
 	// Setup context
 	ctx := context.Background()
 
+	// Run database migrations
+	if err := database.Migrate(cfg.Database.URL, "migrations"); err != nil {
+		log.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+	log.Info("Database migrations applied")
+
 	// Initialize database
 	db, err := database.New(ctx, cfg.Database.URL)
 	if err != nil {
