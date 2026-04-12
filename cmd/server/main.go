@@ -43,17 +43,20 @@ func main() {
 	userRepo := repository.NewUserRepository(db.Pool)
 	categoryRepo := repository.NewCategoryRepository(db.Pool)
 	transactionRepo := repository.NewTransactionRepository(db.Pool)
+	budgetRepo := repository.NewBudgetRepository(db.Pool)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	categoryService := service.NewCategoryService(categoryRepo)
 	transactionService := service.NewTransactionService(transactionRepo)
+	budgetService := service.NewBudgetService(budgetRepo)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
 	authHandler := handlers.NewAuthHandler(authService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
+	budgetHandler := handlers.NewBudgetHandler(budgetService)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -96,6 +99,13 @@ func main() {
 			r.Get("/transactions/{id}", transactionHandler.Get)
 			r.Put("/transactions/{id}", transactionHandler.Update)
 			r.Delete("/transactions/{id}", transactionHandler.Delete)
+
+			// Budgets
+			r.Post("/budgets", budgetHandler.Create)
+			r.Get("/budgets", budgetHandler.List)
+			r.Get("/budgets/{id}", budgetHandler.Get)
+			r.Put("/budgets/{id}", budgetHandler.Update)
+			r.Delete("/budgets/{id}", budgetHandler.Delete)
 		})
 	})
 
