@@ -101,11 +101,15 @@ func (r *draftRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *draftRepository) Confirm(ctx context.Context, draftID uuid.UUID, txID uuid.UUID) error {
-	query := `UPDATE draft_transactions SET status = 'confirmed', confirmed_transaction_id = $1, updated_at = NOW() WHERE id = $2`
+	query := `UPDATE draft_transactions SET status = 'confirmed', confirmed_transaction_id = $1, updated_at = NOW() WHERE id = $2 AND status = 'pending'`
 
-	_, err := r.db.Exec(ctx, query, txID, draftID)
+	result, err := r.db.Exec(ctx, query, txID, draftID)
 	if err != nil {
 		return fmt.Errorf("failed to confirm draft: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("draft already confirmed")
 	}
 
 	return nil

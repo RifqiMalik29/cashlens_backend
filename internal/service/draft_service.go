@@ -95,10 +95,9 @@ func (s *draftService) Confirm(ctx context.Context, draftID, userID uuid.UUID, r
 	}
 
 	if draft.Status != models.DraftStatusPending {
-		return nil, errors.NewBadRequest("Draft is not in pending status")
+		return nil, errors.NewBadRequest("Draft is already confirmed")
 	}
 
-	// Create actual transaction
 	transaction := &models.Transaction{
 		ID:              uuid.New(),
 		UserID:          userID,
@@ -110,15 +109,17 @@ func (s *draftService) Confirm(ctx context.Context, draftID, userID uuid.UUID, r
 		UpdatedAt:       time.Now(),
 	}
 
+	// Atomically mark draft as confirmed first — if this returns 0 rows affected,
+	// another request already confirmed it and we stop before creating a duplicate transaction.
+	err = s.draftRepo.Confirm(ctx, draftID, transaction.ID)
+	if err != nil {
+		return nil, errors.NewBadRequest("Draft is already confirmed")
+	}
+
+	// Create actual transaction only after the draft is locked
 	err = s.transactionRepo.Create(ctx, transaction)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
-	}
-
-	// Mark draft as confirmed
-	err = s.draftRepo.Confirm(ctx, draftID, transaction.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to confirm draft: %w", err)
 	}
 
 	return transaction, nil
