@@ -37,3 +37,17 @@ type TransactionWithCategory struct {
 	Transaction
 	Category Category `json:"category"`
 }
+
+type TransactionSummary struct {
+	TotalIncome   float64            `json:"total_income"`
+	TotalExpense  float64            `json:"total_expense"`
+	NetBalance    float64            `json:"net_balance"`
+	ByCategory    []CategorySummary  `json:"by_category"`
+}
+
+type CategorySummary struct {
+	CategoryID   string  `json:"category_id"`
+	CategoryName string  `json:"category_name"`
+	Type         string  `json:"type"`
+	Total        float64 `json:"total"`
+}

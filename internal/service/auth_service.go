@@ -70,8 +70,8 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 	}
 
 	return &models.AuthResponse{
-		Token: token,
-		User:  *user,
+		AccessToken: token,
+		User:        *user,
 	}, nil
 }
 
@@ -94,8 +94,8 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 	}
 
 	return &models.AuthResponse{
-		Token: token,
-		User:  *res,
+		AccessToken: token,
+		User:        *res,
 	}, nil
 }
 

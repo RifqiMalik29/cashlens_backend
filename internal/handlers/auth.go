@@ -57,9 +57,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate refresh token
+	refreshToken, _ := h.refreshTokenService.GenerateRefreshToken(r.Context(), res.User.ID, r.RemoteAddr, r.UserAgent())
+	if refreshToken != nil {
+		res.RefreshToken = refreshToken.Token
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(res)
+	json.NewEncoder(w).Encode(map[string]any{
+		"data": res,
+	})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -89,9 +97,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	// Generate refresh token
+	refreshToken, _ := h.refreshTokenService.GenerateRefreshToken(r.Context(), res.User.ID, r.RemoteAddr, r.UserAgent())
+	if refreshToken != nil {
+		res.RefreshToken = refreshToken.Token
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(res)
+	json.NewEncoder(w).Encode(map[string]any{
+		"data": res,
+	})
 }
 
 func (h *AuthHandler) GetMe(w http.ResponseWriter, r *http.Request) {
