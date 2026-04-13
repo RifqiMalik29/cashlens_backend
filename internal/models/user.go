@@ -7,12 +7,14 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID  `json:"id"`
-	Email        string     `json:"email"`
-	PasswordHash string     `json:"-"` // Never expose in JSON
-	Name         *string    `json:"name,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID                 uuid.UUID  `json:"id"`
+	Email              string     `json:"email"`
+	PasswordHash       string     `json:"-"` // Never expose in JSON
+	Name               *string    `json:"name,omitempty"`
+	SubscriptionTier   string     `json:"subscription_tier"`
+	SubscriptionExpiry *time.Time `json:"subscription_expires_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type CreateUserRequest struct {
