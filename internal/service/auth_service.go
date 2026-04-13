@@ -18,6 +18,7 @@ type AuthService interface {
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
+	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
 	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
 	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
 }
@@ -53,12 +54,19 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		return nil, fmt.Errorf("Failed to hash password: %w", err)
 	}
 
+	// Default language to "id" if not provided
+	lang := req.Language
+	if lang == "" {
+		lang = "id"
+	}
+
 	// Create user
 	user = &models.User{
 		ID:           uuid.New(),
 		Email:        req.Email,
 		PasswordHash: p,
 		Name:         &req.Name,
+		Language:     lang,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -146,6 +154,10 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User
 	}
 
 	return user, nil
+}
+
+func (s *authService) UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error {
+	return s.userRepo.UpdateLanguage(ctx, userID, language)
 }
 
 func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {

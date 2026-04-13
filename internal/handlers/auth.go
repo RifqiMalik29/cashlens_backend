@@ -159,6 +159,47 @@ func (h *AuthHandler) GetTelegramStatus(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *AuthHandler) UpdateLanguage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return
+	}
+
+	var req models.UpdateLanguageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error:   "Validation failed",
+			Details: validationErrors,
+		})
+		return
+	}
+
+	if err := h.authService.UpdateLanguage(r.Context(), *userID, req.Language); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to update language"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Language updated successfully",
+	})
+}
+
 func (h *AuthHandler) UnlinkTelegram(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
 	if !ok {

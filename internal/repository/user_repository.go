@@ -17,6 +17,7 @@ type UserRepository interface {
 	Update(ctx context.Context, user *models.User) error
 	UpdateSubscription(ctx context.Context, userID uuid.UUID, tier string, expiresAt *time.Time) error
 	UpdateFounder(ctx context.Context, userID uuid.UUID, isFounder bool) error
+	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -30,11 +31,11 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 
 func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, name, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO users (id, email, password_hash, name, language, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	_, err := r.db.Exec(ctx, query,
-		user.ID, user.Email, user.PasswordHash, user.Name,
+		user.ID, user.Email, user.PasswordHash, user.Name, user.Language,
 		user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
@@ -46,11 +47,11 @@ func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -63,11 +64,11 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	err := r.db.QueryRow(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -97,6 +98,15 @@ func (r *userRepository) UpdateFounder(ctx context.Context, userID uuid.UUID, is
 	_, err := r.db.Exec(ctx, query, userID, isFounder)
 	if err != nil {
 		return fmt.Errorf("failed to update founder flag: %w", err)
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error {
+	query := `UPDATE users SET language = $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, language)
+	if err != nil {
+		return fmt.Errorf("failed to update language: %w", err)
 	}
 	return nil
 }

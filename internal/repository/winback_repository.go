@@ -9,9 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// WinBackUser holds the minimal user data needed for a win-back campaign.
+type WinBackUser struct {
+	ID       uuid.UUID
+	Language string
+}
+
 // WinBackRepository handles win-back campaign tracking
 type WinBackRepository interface {
-	GetUsersEligibleForWinBack(ctx context.Context, daysSinceExpiry int, limit int) ([]uuid.UUID, error)
+	GetUsersEligibleForWinBack(ctx context.Context, daysSinceExpiry int, limit int) ([]WinBackUser, error)
 	MarkWinBackSent(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -23,15 +29,15 @@ func NewWinBackRepository(pool *pgxpool.Pool) WinBackRepository {
 	return &winBackRepository{pool: pool}
 }
 
-// GetUsersEligibleForWinBack returns user IDs who:
+// GetUsersEligibleForWinBack returns users who:
 // - Had premium subscription expire X days ago
 // - Haven't resubscribed
 // - Haven't been sent a win-back message yet
-func (r *winBackRepository) GetUsersEligibleForWinBack(ctx context.Context, daysSinceExpiry int, limit int) ([]uuid.UUID, error) {
+func (r *winBackRepository) GetUsersEligibleForWinBack(ctx context.Context, daysSinceExpiry int, limit int) ([]WinBackUser, error) {
 	cutoffDate := time.Now().AddDate(0, 0, -daysSinceExpiry)
 
 	query := `
-		SELECT id FROM users
+		SELECT id, language FROM users
 		WHERE subscription_tier = 'premium'
 		  AND subscription_expires_at < $1
 		  AND subscription_expires_at >= $1 - INTERVAL '1 day'
@@ -45,20 +51,20 @@ func (r *winBackRepository) GetUsersEligibleForWinBack(ctx context.Context, days
 	}
 	defer rows.Close()
 
-	var userIDs []uuid.UUID
+	var users []WinBackUser
 	for rows.Next() {
-		var userID uuid.UUID
-		if err := rows.Scan(&userID); err != nil {
-			return nil, fmt.Errorf("failed to scan user ID: %w", err)
+		var u WinBackUser
+		if err := rows.Scan(&u.ID, &u.Language); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
 		}
-		userIDs = append(userIDs, userID)
+		users = append(users, u)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	return userIDs, nil
+	return users, nil
 }
 
 // MarkWinBackSent sets win_back_sent_at to now()

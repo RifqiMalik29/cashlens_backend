@@ -223,6 +223,7 @@ func main() {
 			r.Get("/auth/me", authHandler.GetMe)
 			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
 			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
+			r.Patch("/auth/language", authHandler.UpdateLanguage)
 			r.Post("/auth/logout", authHandler.Logout)
 
 			// Subscription
