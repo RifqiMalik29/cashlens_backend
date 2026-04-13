@@ -4,24 +4,38 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
+	"github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
 type ReceiptHandler struct {
 	geminiAPIKey string
+	quotaService service.QuotaService
 }
 
-func NewReceiptHandler(geminiAPIKey string) *ReceiptHandler {
-	return &ReceiptHandler{geminiAPIKey: geminiAPIKey}
+func NewReceiptHandler(geminiAPIKey string, quotaService service.QuotaService) *ReceiptHandler {
+	return &ReceiptHandler{
+		geminiAPIKey: geminiAPIKey,
+		quotaService: quotaService,
+	}
 }
 
 func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 	if h.geminiAPIKey == "" {
 		apperrors.WriteJSONError(w, "Gemini API key not configured", http.StatusNotImplemented)
+		return
+	}
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -32,23 +46,34 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("image")
+	file, _, err := r.FormFile("image")
 	if err != nil {
 		apperrors.WriteJSONError(w, "Image file is required", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	// Validate file type
-	if header.Header.Get("Content-Type") != "image/jpeg" && header.Header.Get("Content-Type") != "image/png" {
+	// Validate file type using actual bytes, not client-controlled header
+	imageData, err := io.ReadAll(file)
+	if err != nil {
+		apperrors.WriteJSONError(w, "Failed to read image", http.StatusInternalServerError)
+		return
+	}
+
+	detectedType := http.DetectContentType(imageData)
+	if detectedType != "image/jpeg" && detectedType != "image/png" {
 		apperrors.WriteJSONError(w, "Only JPEG and PNG images are supported", http.StatusBadRequest)
 		return
 	}
 
-	// Read file
-	imageData, err := io.ReadAll(file)
-	if err != nil {
-		apperrors.WriteJSONError(w, "Failed to read image", http.StatusInternalServerError)
+	// Atomic quota check + increment (prevents TOCTOU race condition)
+	if err := h.quotaService.CheckAndIncrementScanQuota(r.Context(), *userID); err != nil {
+		var appErr *apperrors.AppError
+		if errors.As(err, &appErr) {
+			apperrors.WriteAppError(w, appErr)
+		} else {
+			apperrors.WriteJSONError(w, "Failed to check quota", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -162,7 +187,7 @@ Anti-Hallucination Rules:
 	}
 
 	// Call Gemini API
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", h.geminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", h.geminiAPIKey)
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
