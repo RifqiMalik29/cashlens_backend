@@ -18,6 +18,7 @@ type UserRepository interface {
 	UpdateSubscription(ctx context.Context, userID uuid.UUID, tier string, expiresAt *time.Time) error
 	UpdateFounder(ctx context.Context, userID uuid.UUID, isFounder bool) error
 	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
+	UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -47,11 +48,11 @@ func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, language, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -64,11 +65,11 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, language, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	err := r.db.QueryRow(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language,
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -107,6 +108,22 @@ func (r *userRepository) UpdateLanguage(ctx context.Context, userID uuid.UUID, l
 	_, err := r.db.Exec(ctx, query, userID, language)
 	if err != nil {
 		return fmt.Errorf("failed to update language: %w", err)
+	}
+	return nil
+}
+
+func (r *userRepository) UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error {
+	var query string
+	var err error
+	if token == "" {
+		query = `UPDATE users SET expo_push_token = NULL, updated_at = NOW() WHERE id = $1`
+		_, err = r.db.Exec(ctx, query, userID)
+	} else {
+		query = `UPDATE users SET expo_push_token = $2, updated_at = NOW() WHERE id = $1`
+		_, err = r.db.Exec(ctx, query, userID, token)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update push token: %w", err)
 	}
 	return nil
 }
