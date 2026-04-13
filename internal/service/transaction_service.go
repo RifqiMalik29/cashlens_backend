@@ -22,10 +22,14 @@ type TransactionService interface {
 
 type transactionService struct {
 	transactionRepo repository.TransactionRepository
+	quotaService    QuotaService
 }
 
-func NewTransactionService(transactionRepo repository.TransactionRepository) TransactionService {
-	return &transactionService{transactionRepo: transactionRepo}
+func NewTransactionService(transactionRepo repository.TransactionRepository, quotaService QuotaService) TransactionService {
+	return &transactionService{
+		transactionRepo: transactionRepo,
+		quotaService:    quotaService,
+	}
 }
 
 func (s *transactionService) Create(ctx context.Context, userID uuid.UUID, req models.CreateTransactionRequest) (*models.Transaction, error) {
@@ -35,6 +39,11 @@ func (s *transactionService) Create(ctx context.Context, userID uuid.UUID, req m
 
 	if req.TransactionDate.IsZero() {
 		return nil, errors.NewBadRequest("Transaction date is required")
+	}
+
+	// Atomic quota check + increment (prevents TOCTOU race condition)
+	if err := s.quotaService.CheckAndIncrementTransactionQuota(ctx, userID); err != nil {
+		return nil, err
 	}
 
 	transaction := &models.Transaction{

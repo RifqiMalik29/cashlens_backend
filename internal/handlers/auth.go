@@ -123,8 +123,8 @@ func (h *AuthHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.GetMe(r.Context(), *userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to get user profile"})
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "User not found — please log in again"})
 		return
 	}
 
@@ -245,3 +245,4 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		"message": "Logged out successfully",
 	})
 }
+

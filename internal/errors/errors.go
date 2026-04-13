@@ -60,10 +60,16 @@ type ErrorResponse struct {
 }
 
 // WriteJSONError writes a JSON error response with the proper headers and status code
-func WriteJSONError(w http.ResponseWriter, message string, statusCode int) {
+func WriteJSONError(w http.ResponseWriter, message string, statusCode int, details ...map[string]string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
+	
+	response := ErrorResponse{Error: message}
+	if len(details) > 0 {
+		response.Details = details[0]
+	}
+	
+	json.NewEncoder(w).Encode(response)
 }
 
 // WriteAppError writes an AppError as a JSON response

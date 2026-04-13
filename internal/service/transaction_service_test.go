@@ -44,7 +44,41 @@ func (m *MockTransactionRepository) Delete(ctx context.Context, id uuid.UUID) er
 	return m.DeleteFunc(ctx, id)
 }
 
-// Mock Draft Repository
+// Mock Quota Service
+type MockQuotaService struct {
+	CheckAndIncrementTransactionQuotaFunc func(ctx context.Context, userID uuid.UUID) error
+	CheckAndIncrementScanQuotaFunc       func(ctx context.Context, userID uuid.UUID) error
+	GetCurrentUsageFunc                  func(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error)
+}
+
+func (m *MockQuotaService) CheckAndIncrementTransactionQuota(ctx context.Context, userID uuid.UUID) error {
+	if m.CheckAndIncrementTransactionQuotaFunc != nil {
+		return m.CheckAndIncrementTransactionQuotaFunc(ctx, userID)
+	}
+	return nil
+}
+
+func (m *MockQuotaService) CheckAndIncrementScanQuota(ctx context.Context, userID uuid.UUID) error {
+	if m.CheckAndIncrementScanQuotaFunc != nil {
+		return m.CheckAndIncrementScanQuotaFunc(ctx, userID)
+	}
+	return nil
+}
+
+func (m *MockQuotaService) GetCurrentUsage(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error) {
+	if m.GetCurrentUsageFunc != nil {
+		return m.GetCurrentUsageFunc(ctx, userID)
+	}
+	return &models.UserQuota{
+		ID:               uuid.New(),
+		UserID:           userID,
+		PeriodMonth:      1,
+		PeriodYear:       2026,
+		ScansUsed:        0,
+		TransactionsUsed: 0,
+	}, nil
+}
+
 type MockDraftRepository struct {
 	CreateFunc       func(ctx context.Context, draft *models.DraftTransaction) error
 	GetByIDFunc      func(ctx context.Context, id uuid.UUID) (*models.DraftTransaction, error)
@@ -131,8 +165,9 @@ func TestTransactionService_Create(t *testing.T) {
 					return nil
 				},
 			}
+			mockQuota := &MockQuotaService{}
 
-			svc := NewTransactionService(mockRepo)
+			svc := NewTransactionService(mockRepo, mockQuota)
 
 			result, err := svc.Create(context.Background(), userID, tt.req)
 
@@ -194,8 +229,9 @@ func TestTransactionService_Get(t *testing.T) {
 					return tt.transaction, nil
 				},
 			}
+			mockQuota := &MockQuotaService{}
 
-			svc := NewTransactionService(mockRepo)
+			svc := NewTransactionService(mockRepo, mockQuota)
 
 			result, err := svc.Get(context.Background(), tt.requestID, userID)
 

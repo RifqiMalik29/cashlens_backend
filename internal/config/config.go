@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	JWT       JWTConfig
-	RateLimit RateLimitConfig
-	GeminiAPI Gemini
-	Telegram  Telegram
+	Server     ServerConfig
+	Database   DatabaseConfig
+	JWT        JWTConfig
+	RateLimit  RateLimitConfig
+	GeminiAPI  Gemini
+	Telegram   Telegram
+	Payment    Payment
 }
 
 type ServerConfig struct {
@@ -43,11 +44,18 @@ type RateLimitConfig struct {
 }
 
 type Gemini struct {
-	APIKey string
+	APIKey      string
+	ScanningModel string
+	TelegramModel string
 }
 
 type Telegram struct {
 	BotToken string
+}
+
+type Payment struct {
+	XenditWebhookToken string
+	XenditSecretKey    string
 }
 
 func Load() (*Config, error) {
@@ -75,10 +83,16 @@ func Load() (*Config, error) {
 			AuthWindow:   parseDuration(getEnv("RATE_LIMIT_AUTH_WINDOW", "5m"), 5*time.Minute),
 		},
 		GeminiAPI: Gemini{
-			APIKey: os.Getenv("GEMINI_API_KEY"),
+			APIKey:        os.Getenv("GEMINI_API_KEY"),
+			ScanningModel: getEnv("SCANNING_AI", "gemini-1.5-flash"),
+			TelegramModel: getEnv("TELEGRAM_AI", "gemini-1.5-flash"),
 		},
 		Telegram: Telegram{
 			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		},
+		Payment: Payment{
+			XenditWebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
+			XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
 		},
 	}
 

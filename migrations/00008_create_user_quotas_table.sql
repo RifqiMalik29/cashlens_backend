@@ -1,14 +1,14 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE user_quotas (
-    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS user_quotas (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID REFERENCES users(id) ON DELETE CASCADE,
     period_month      INTEGER NOT NULL,
     period_year       INTEGER NOT NULL,
-    transactions_used INTEGER NOT NULL DEFAULT 0,
-    scans_used        INTEGER NOT NULL DEFAULT 0,
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    scans_used        INTEGER DEFAULT 0,
+    transactions_used INTEGER DEFAULT 0,
+    created_at        TIMESTAMPTZ DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, period_month, period_year)
 );
 

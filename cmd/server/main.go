@@ -20,7 +20,16 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 )
+
+// getEnv returns environment variable or default value
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 func main() {
 	// Initialize structured logger
@@ -60,9 +69,27 @@ func main() {
 	draftRepo := repository.NewDraftRepository(db.Pool)
 	chatRepo := repository.NewChatLinkRepository(db.Pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
+	quotaRepo := repository.NewQuotaRepository(db.Pool)
+	subEventRepo := repository.NewSubscriptionEventRepository(db.Pool)
+	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
+	winBackRepo := repository.NewWinBackRepository(db.Pool)
+
+	// Initialize Xendit client
+	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
+	quotaService := service.NewQuotaService(quotaRepo, userRepo)
+	subscriptionService := service.NewSubscriptionService(
+		userRepo,
+		subEventRepo,
+		pendingInvoiceRepo,
+		xenditClient,
+		cfg.Payment.XenditWebhookToken,
+	)
+	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
+	
+	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -72,7 +99,7 @@ func main() {
 		cfg.JWT.MaxReuseWindow,
 	)
 	categoryService := service.NewCategoryService(categoryRepo)
-	transactionService := service.NewTransactionService(transactionRepo)
+	transactionService := service.NewTransactionService(transactionRepo, quotaService)
 	budgetService := service.NewBudgetService(budgetRepo)
 	draftService := service.NewDraftService(draftRepo, transactionRepo)
 
@@ -83,7 +110,16 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, categoryRepo)
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, cfg.GeminiAPI.ScanningModel, quotaService, categoryRepo)
+	subscriptionHandler := handlers.NewSubscriptionHandler(
+		quotaService,
+		userRepo,
+		subscriptionService,
+		xenditClient,
+		cfg.Payment.XenditWebhookToken,
+		getEnv("XENDIT_SUCCESS_URL", "cashlens://payment/success"),
+		getEnv("XENDIT_FAILURE_URL", "cashlens://payment/failed"),
+	)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
@@ -91,6 +127,7 @@ func main() {
 		botService = telegram.NewBotService(
 			cfg.Telegram.BotToken,
 			cfg.GeminiAPI.APIKey,
+			cfg.GeminiAPI.TelegramModel,
 			draftService,
 			transactionService,
 			budgetService,
@@ -107,6 +144,39 @@ func main() {
 		log.Info("Telegram bot token not configured - skipping bot initialization")
 	}
 
+	// Start win-back campaign scheduler (runs daily at 9 AM)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		// Run once on startup after 1 hour delay
+		time.Sleep(1 * time.Hour)
+
+		for range ticker.C {
+			count, err := winBackService.RunWinBackCampaign(context.Background())
+			if err != nil {
+				log.Error("Win-back campaign failed", "error", err)
+			} else if count > 0 {
+				log.Info("Win-back campaign completed", "users_sent", count)
+			}
+		}
+	}()
+	log.Info("Win-back campaign scheduler started")
+
+	// Start expired invoice cleanup (runs daily)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			count, err := pendingInvoiceRepo.ExpireStale(context.Background())
+			if err != nil {
+				log.Error("Expired invoice cleanup failed", "error", err)
+			} else if count > 0 {
+				log.Info("Expired invoices cleaned up", "count", count)
+			}
+		}
+	}()
+
 	// Setup router
 	r := chi.NewRouter()
 
@@ -115,7 +185,18 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
-	r.Use(custommiddleware.CORS)
+	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
+		AllowedOrigins: []string{"*"}, // Add your production domains here
+		Environment:    cfg.Server.Environment,
+	}))
+	r.Use(custommiddleware.SecurityHeaders(custommiddleware.SecurityHeadersConfig{
+		Environment: cfg.Server.Environment,
+	}))
+
+	// Warn if production CORS is not configured
+	if cfg.Server.Environment == "production" && len([]string{}) == 0 {
+		log.Warn("WARNING: Production CORS allowed origins is empty — all browser requests will be 403'd. Update AllowedOrigins in cmd/server/main.go")
+	}
 
 	// Health check (public, no rate limiting)
 	r.Get("/health", healthHandler.Check)
@@ -124,6 +205,7 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth routes (stricter rate limiting)
 		r.Group(func(r chi.Router) {
+			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit
 			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
@@ -133,13 +215,20 @@ func main() {
 		// Protected routes (standard rate limiting)
 		r.Group(func(r chi.Router) {
 			r.Use(custommiddleware.Auth(authService))
+			r.Use(custommiddleware.SubscriptionExpiryCheck(userRepo, subEventRepo))
 			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
+			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit for JSON requests
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
 			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
 			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
 			r.Post("/auth/logout", authHandler.Logout)
+
+			// Subscription
+			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
+			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
+			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
@@ -169,9 +258,19 @@ func main() {
 			r.Get("/drafts/{id}", draftHandler.Get)
 			r.Post("/drafts/{id}/confirm", draftHandler.Confirm)
 			r.Delete("/drafts/{id}", draftHandler.Delete)
+		})
 
-			// Receipt Scanner
+		// Receipt Scanner (separate group with higher body limit for image uploads)
+		r.Group(func(r chi.Router) {
+			r.Use(custommiddleware.Auth(authService))
+			r.Use(custommiddleware.MaxBodyLimit(10 << 20)) // 10MB for image uploads
 			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
+		})
+
+		// Webhook routes (rate-limited; full signature verification required before enabling)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
+			r.Post("/webhooks/payment", subscriptionHandler.PaymentWebhook)
 		})
 	})
 
