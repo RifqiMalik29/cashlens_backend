@@ -60,9 +60,13 @@ func main() {
 	draftRepo := repository.NewDraftRepository(db.Pool)
 	chatRepo := repository.NewChatLinkRepository(db.Pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
+	quotaRepo := repository.NewQuotaRepository(db.Pool)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
+	quotaService := service.NewQuotaService(quotaRepo, userRepo)
+	
+	authService := service.NewAuthService(userRepo, categorySeedingService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -72,7 +76,7 @@ func main() {
 		cfg.JWT.MaxReuseWindow,
 	)
 	categoryService := service.NewCategoryService(categoryRepo)
-	transactionService := service.NewTransactionService(transactionRepo)
+	transactionService := service.NewTransactionService(transactionRepo, quotaService)
 	budgetService := service.NewBudgetService(budgetRepo)
 	draftService := service.NewDraftService(draftRepo, transactionRepo)
 
@@ -83,7 +87,8 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey)
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, quotaService)
+	subscriptionHandler := handlers.NewSubscriptionHandler(quotaService, userRepo)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
@@ -115,7 +120,18 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
-	r.Use(custommiddleware.CORS)
+	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
+		AllowedOrigins: []string{}, // Add your production domains here
+		Environment:    cfg.Server.Environment,
+	}))
+	r.Use(custommiddleware.SecurityHeaders(custommiddleware.SecurityHeadersConfig{
+		Environment: cfg.Server.Environment,
+	}))
+
+	// Warn if production CORS is not configured
+	if cfg.Server.Environment == "production" && len([]string{}) == 0 {
+		log.Warn("WARNING: Production CORS allowed origins is empty — all browser requests will be 403'd. Update AllowedOrigins in cmd/server/main.go")
+	}
 
 	// Health check (public, no rate limiting)
 	r.Get("/health", healthHandler.Check)
@@ -124,6 +140,7 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth routes (stricter rate limiting)
 		r.Group(func(r chi.Router) {
+			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit
 			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
@@ -134,10 +151,15 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(custommiddleware.Auth(authService))
 			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
+			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit for JSON requests
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
 			r.Post("/auth/logout", authHandler.Logout)
+
+			// Subscription
+			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
+			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
@@ -167,9 +189,19 @@ func main() {
 			r.Get("/drafts/{id}", draftHandler.Get)
 			r.Post("/drafts/{id}/confirm", draftHandler.Confirm)
 			r.Delete("/drafts/{id}", draftHandler.Delete)
+		})
 
-			// Receipt Scanner
+		// Receipt Scanner (separate group with higher body limit for image uploads)
+		r.Group(func(r chi.Router) {
+			r.Use(custommiddleware.Auth(authService))
+			r.Use(custommiddleware.MaxBodyLimit(10 << 20)) // 10MB for image uploads
 			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
+		})
+
+		// Webhook routes (rate-limited; full signature verification required before enabling)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
+			r.Post("/webhooks/payment", subscriptionHandler.PaymentWebhook)
 		})
 	})
 
