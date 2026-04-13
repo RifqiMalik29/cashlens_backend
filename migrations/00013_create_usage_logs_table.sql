@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS usage_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
-CREATE INDEX idx_usage_logs_action ON usage_logs(action);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON usage_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_action ON usage_logs(action);
 -- +goose StatementEnd
 
 -- +goose Down
