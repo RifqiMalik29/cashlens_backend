@@ -55,6 +55,8 @@ type expiryReminderService struct {
 	telegramToken string
 	httpClient    *http.Client
 	log           *logger.Logger
+	telegramURL   string
+	expoURL       string
 }
 
 func NewExpiryReminderService(
@@ -68,6 +70,8 @@ func NewExpiryReminderService(
 		telegramToken: telegramToken,
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
 		log:           logger.GetDefault().With("component", "expiry_reminder_service"),
+		telegramURL:   "https://api.telegram.org/bot%s/sendMessage",
+		expoURL:       "https://exp.host/push/send",
 	}
 }
 
@@ -141,7 +145,7 @@ func (s *expiryReminderService) sendTelegramMessage(chatID string, text string) 
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.telegramToken)
+	url := fmt.Sprintf(s.telegramURL, s.telegramToken)
 	resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to call Telegram API: %w", err)
@@ -163,7 +167,7 @@ func (s *expiryReminderService) sendExpoPush(token, title, body string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal push payload: %w", err)
 	}
-	resp, err := s.httpClient.Post("https://exp.host/push/send", "application/json", bytes.NewBuffer(jsonBody))
+	resp, err := s.httpClient.Post(s.expoURL, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("failed to call Expo push API: %w", err)
 	}
