@@ -13,6 +13,7 @@ type User struct {
 	Name               *string    `json:"name,omitempty"`
 	SubscriptionTier   string     `json:"subscription_tier"`
 	SubscriptionExpiry *time.Time `json:"subscription_expires_at,omitempty"`
+	IsFounder          bool       `json:"is_founder"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 }

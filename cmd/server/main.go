@@ -61,10 +61,18 @@ func main() {
 	chatRepo := repository.NewChatLinkRepository(db.Pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
 	quotaRepo := repository.NewQuotaRepository(db.Pool)
+	subEventRepo := repository.NewSubscriptionEventRepository(db.Pool)
+	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
 
 	// Initialize services
 	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
 	quotaService := service.NewQuotaService(quotaRepo, userRepo)
+	subscriptionService := service.NewSubscriptionService(
+		userRepo,
+		subEventRepo,
+		pendingInvoiceRepo,
+		cfg.Payment.XenditWebhookToken,
+	)
 	
 	authService := service.NewAuthService(userRepo, categorySeedingService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -88,7 +96,7 @@ func main() {
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
 	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, quotaService)
-	subscriptionHandler := handlers.NewSubscriptionHandler(quotaService, userRepo)
+	subscriptionHandler := handlers.NewSubscriptionHandler(quotaService, userRepo, subscriptionService, cfg.Payment.XenditWebhookToken)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService

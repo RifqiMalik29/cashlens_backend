@@ -45,12 +45,12 @@ func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, created_at, updated_at
+		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.SubscriptionTier, &user.SubscriptionExpiry,
+		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -62,12 +62,12 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, created_at, updated_at
+		SELECT id, email, password_hash, name, subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name,
-		&user.SubscriptionTier, &user.SubscriptionExpiry,
+		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {

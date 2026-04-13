@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	JWT       JWTConfig
-	RateLimit RateLimitConfig
-	GeminiAPI Gemini
-	Telegram  Telegram
+	Server     ServerConfig
+	Database   DatabaseConfig
+	JWT        JWTConfig
+	RateLimit  RateLimitConfig
+	GeminiAPI  Gemini
+	Telegram   Telegram
+	Payment    Payment
 }
 
 type ServerConfig struct {
@@ -50,6 +51,11 @@ type Telegram struct {
 	BotToken string
 }
 
+type Payment struct {
+	XenditWebhookToken string
+	XenditSecretKey    string
+}
+
 func Load() (*Config, error) {
 	// Load .env file (ignore error if not found)
 	_ = godotenv.Load()
@@ -79,6 +85,10 @@ func Load() (*Config, error) {
 		},
 		Telegram: Telegram{
 			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		},
+		Payment: Payment{
+			XenditWebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
+			XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
 		},
 	}
 

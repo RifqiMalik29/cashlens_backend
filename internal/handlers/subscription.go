@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
@@ -9,20 +13,35 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
-type SubscriptionHandler struct {
-	quotaService service.QuotaService
-	userRepo     repository.UserRepository
+// Plan pricing (in IDR)
+var PlanPrices = map[string]float64{
+	"monthly":        15000,
+	"annual":         129000,
+	"founder_annual": 99000,
 }
 
-func NewSubscriptionHandler(quotaService service.QuotaService, userRepo repository.UserRepository) *SubscriptionHandler {
+type SubscriptionHandler struct {
+	quotaService  service.QuotaService
+	userRepo      repository.UserRepository
+	subService    service.SubscriptionService
+	webhookToken  string
+}
+
+func NewSubscriptionHandler(
+	quotaService service.QuotaService,
+	userRepo repository.UserRepository,
+	subService service.SubscriptionService,
+	webhookToken string,
+) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		quotaService: quotaService,
 		userRepo:     userRepo,
+		subService:   subService,
+		webhookToken: webhookToken,
 	}
 }
 
@@ -34,34 +53,29 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get real user data
 	user, err := h.userRepo.GetByID(r.Context(), *userID)
 	if err != nil {
 		apperrors.WriteJSONError(w, "Failed to get user", http.StatusInternalServerError)
 		return
 	}
 
-	// Determine effective tier (check expiry)
 	tier := user.SubscriptionTier
 	var expiresAt *string
 	if user.SubscriptionExpiry != nil {
 		expStr := user.SubscriptionExpiry.Format(time.RFC3339)
 		expiresAt = &expStr
-		
-		// Auto-downgrade expired premium users
+
 		if tier == "premium" && user.SubscriptionExpiry.Before(time.Now()) {
 			tier = "free"
 		}
 	}
 
-	// Get current quota usage
 	quota, err := h.quotaService.GetCurrentUsage(r.Context(), *userID)
 	if err != nil {
 		apperrors.WriteJSONError(w, "Failed to get quota", http.StatusInternalServerError)
 		return
 	}
 
-	// Determine limits based on tier
 	limits := models.FreeTierLimits
 	if tier == "premium" {
 		limits = models.PremiumTierLimits
@@ -70,9 +84,8 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 	txLimit := limits.MaxTransactionsPerMonth
 	scanLimit := limits.MaxScansPerMonth
 
-	// -1 means unlimited for premium
 	if txLimit == -1 {
-		txLimit = 0 // 0 in response means unlimited
+		txLimit = 0
 	}
 	if scanLimit == -1 {
 		scanLimit = 0
@@ -82,10 +95,10 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 		Tier:      tier,
 		ExpiresAt: expiresAt,
 		Quota: &models.QuotaStatus{
-			TransactionsUsed: quota.TransactionsUsed,
+			TransactionsUsed:  quota.TransactionsUsed,
 			TransactionsLimit: txLimit,
-			ScansUsed:        quota.ScansUsed,
-			ScansLimit:       scanLimit,
+			ScansUsed:         quota.ScansUsed,
+			ScansLimit:        scanLimit,
 		},
 	}
 
@@ -97,6 +110,7 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 }
 
 // CreateInvoice creates a payment invoice for subscription upgrade
+// Placeholder — returns 501 until Xendit integration is complete
 func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateInvoiceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -104,18 +118,68 @@ func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
-		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
+	price, ok := PlanPrices[req.Plan]
+	if !ok {
+		apperrors.WriteJSONError(w, "Invalid plan", http.StatusBadRequest)
 		return
 	}
 
-	// TODO: Implement Xendit/Midtrans integration
-	apperrors.WriteJSONError(w, "Payment integration not yet implemented", http.StatusNotImplemented)
+	// TODO: Integrate Xendit Invoice API
+	// 1. Call Xendit to create invoice
+	// 2. Store external_invoice_id in pending_invoices table
+	// 3. Return payment_url
+
+	_ = price // Will be used when Xendit integration is added
+
+	apperrors.WriteJSONError(w, "Payment integration not yet implemented — Xendit integration required", http.StatusNotImplemented)
 }
 
-// PaymentWebhook handles payment provider webhook callbacks
-// TODO: Implement webhook signature verification before enabling
+// PaymentWebhook handles Xendit webhook callbacks
 func (h *SubscriptionHandler) PaymentWebhook(w http.ResponseWriter, r *http.Request) {
-	// Disabled until signature verification is implemented
-	apperrors.WriteJSONError(w, "Payment webhook not yet implemented — signature verification required", http.StatusNotImplemented)
+	// 1. Verify Xendit webhook signature
+	callbackToken := r.Header.Get("x-callback-token")
+	if callbackToken == "" || !h.verifyWebhookToken(callbackToken) {
+		apperrors.WriteJSONError(w, "Invalid webhook signature", http.StatusUnauthorized)
+		return
+	}
+
+	// 2. Read and parse payload
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		// Return 200 to prevent Xendit retries even on parse errors
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var payload models.XenditWebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// 3. Process the webhook (idempotent)
+	err = h.subService.ProcessPaymentWebhook(r.Context(), payload.ExternalInvoiceID, payload.Status, payload.PaidAmount)
+	if err != nil {
+		// Log error but return 200 to prevent webhook retries
+		// In production: add proper slog.Error logging here
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// verifyWebhookToken verifies the Xendit callback token using HMAC
+func (h *SubscriptionHandler) verifyWebhookToken(token string) bool {
+	if h.webhookToken == "" {
+		return false
+	}
+	return hmac.Equal([]byte(token), []byte(h.webhookToken))
+}
+
+// ComputeXenditSignature computes HMAC-SHA256 for testing/debugging
+func ComputeXenditSignature(payload []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil))
 }
