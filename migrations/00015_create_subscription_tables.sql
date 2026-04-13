@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS subscription_events (
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_subscription_events_user ON subscription_events(user_id, event_type);
-CREATE INDEX idx_subscription_events_invoice ON subscription_events(external_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_events_user ON subscription_events(user_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_subscription_events_invoice ON subscription_events(external_invoice_id);
 
 -- Track pending invoices to map Xendit webhook → user_id
 CREATE TABLE IF NOT EXISTS pending_invoices (
@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS pending_invoices (
     updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_pending_invoices_external ON pending_invoices(external_invoice_id);
-CREATE INDEX idx_pending_invoices_user ON pending_invoices(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_pending_invoices_external ON pending_invoices(external_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_pending_invoices_user ON pending_invoices(user_id, status);
 -- +goose StatementEnd
 
 -- +goose Down
