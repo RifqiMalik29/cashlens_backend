@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"regexp"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -21,20 +21,20 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepo      repository.UserRepository
-	jwtSecret     string
-	jwtExpiration time.Duration
+	userRepo                 repository.UserRepository
+	categorySeedingService   CategorySeedingService
+	jwtSecret                string
+	jwtExpiration            time.Duration
 }
 
-func NewAuthService(userRepo repository.UserRepository, jwtSecret string, jwtExpiration time.Duration) AuthService {
+func NewAuthService(userRepo repository.UserRepository, categorySeedingService CategorySeedingService, jwtSecret string, jwtExpiration time.Duration) AuthService {
 	return &authService{
-		userRepo:      userRepo,
-		jwtSecret:     jwtSecret,
-		jwtExpiration: jwtExpiration,
+		userRepo:               userRepo,
+		categorySeedingService: categorySeedingService,
+		jwtSecret:              jwtSecret,
+		jwtExpiration:          jwtExpiration,
 	}
 }
-
-var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
 
 func (s *authService) Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error) {
 	// Check if email already exists
@@ -63,6 +63,11 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		return nil, fmt.Errorf("Register failed: %w", err)
 	}
 
+	// Seed default categories for new user (non-fatal: registration still succeeds)
+	if err := s.categorySeedingService.SeedDefaultCategories(ctx, user.ID); err != nil {
+		slog.Error("Failed to seed default categories for new user", "user_id", user.ID, "error", err)
+	}
+
 	// Generate JWT token
 	token, err := generateToken(user.ID, s.jwtSecret, s.jwtExpiration)
 	if err != nil {
@@ -78,13 +83,15 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error) {
 	res, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("User not found: %w", err)
+		// Return generic error to prevent user enumeration
+		return nil, fmt.Errorf("invalid email or password")
 	}
 
 	// Verify password
 	status := checkPasswordHash(req.Password, res.PasswordHash)
 	if !status {
-		return nil, fmt.Errorf("Invalid email or password")
+		// Return same generic error for consistency
+		return nil, fmt.Errorf("invalid email or password")
 	}
 
 	// Generate JWT token
@@ -137,7 +144,7 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User
 	return user, nil
 }
 
-// Helper methods (to be implemented)
+// Helper methods
 func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
@@ -155,8 +162,4 @@ func generateToken(userID uuid.UUID, secret string, expiration time.Duration) (s
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
-}
-
-func isEmailValid(e string) bool {
-	return emailRegex.MatchString(e)
 }
