@@ -73,6 +73,7 @@ func main() {
 	subEventRepo := repository.NewSubscriptionEventRepository(db.Pool)
 	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
 	winBackRepo := repository.NewWinBackRepository(db.Pool)
+	reminderRepo := repository.NewReminderRepository(db.Pool)
 
 	// Initialize Xendit client
 	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
@@ -88,6 +89,7 @@ func main() {
 		cfg.Payment.XenditWebhookToken,
 	)
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
+	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
 	
 	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -163,6 +165,38 @@ func main() {
 	}()
 	log.Info("Win-back campaign scheduler started")
 
+	// Start 3-day expiry reminder scheduler (runs daily)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		time.Sleep(90 * time.Minute)
+		for range ticker.C {
+			count, err := expiryReminderService.RunReminders(context.Background(), 3)
+			if err != nil {
+				log.Error("3-day expiry reminder failed", "error", err)
+			} else if count > 0 {
+				log.Info("3-day expiry reminders sent", "users_sent", count)
+			}
+		}
+	}()
+	log.Info("3-day expiry reminder scheduler started")
+
+	// Start 1-day expiry reminder scheduler (runs daily)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		time.Sleep(2 * time.Hour)
+		for range ticker.C {
+			count, err := expiryReminderService.RunReminders(context.Background(), 1)
+			if err != nil {
+				log.Error("1-day expiry reminder failed", "error", err)
+			} else if count > 0 {
+				log.Info("1-day expiry reminders sent", "users_sent", count)
+			}
+		}
+	}()
+	log.Info("1-day expiry reminder scheduler started")
+
 	// Start expired invoice cleanup (runs daily)
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
@@ -224,6 +258,7 @@ func main() {
 			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
 			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
 			r.Patch("/auth/language", authHandler.UpdateLanguage)
+			r.Patch("/auth/push-token", authHandler.UpdatePushToken)
 			r.Post("/auth/logout", authHandler.Logout)
 
 			// Subscription
