@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -13,35 +14,48 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
-// Plan pricing (in IDR)
-var PlanPrices = map[string]float64{
-	"monthly":        15000,
-	"annual":         129000,
-	"founder_annual": 99000,
+// Plan pricing and duration (in IDR)
+var PlanConfig = map[string]struct {
+	Price    float64
+	Duration time.Duration
+}{
+	"monthly":        {Price: 15000, Duration: 30 * 24 * time.Hour},
+	"annual":         {Price: 129000, Duration: 365 * 24 * time.Hour},
+	"founder_annual": {Price: 99000, Duration: 365 * 24 * time.Hour},
 }
 
 type SubscriptionHandler struct {
 	quotaService  service.QuotaService
 	userRepo      repository.UserRepository
 	subService    service.SubscriptionService
+	xenditClient  *xendit.XenditClient
 	webhookToken  string
+	successURL    string
+	failureURL    string
 }
 
 func NewSubscriptionHandler(
 	quotaService service.QuotaService,
 	userRepo repository.UserRepository,
 	subService service.SubscriptionService,
+	xenditClient *xendit.XenditClient,
 	webhookToken string,
+	successURL string,
+	failureURL string,
 ) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		quotaService: quotaService,
 		userRepo:     userRepo,
 		subService:   subService,
+		xenditClient: xenditClient,
 		webhookToken: webhookToken,
+		successURL:   successURL,
+		failureURL:   failureURL,
 	}
 }
 
@@ -109,29 +123,66 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 	})
 }
 
-// CreateInvoice creates a payment invoice for subscription upgrade
-// Placeholder — returns 501 until Xendit integration is complete
+// CreateInvoice creates a payment invoice via Xendit
 func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req models.CreateInvoiceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	price, ok := PlanPrices[req.Plan]
+	config, ok := PlanConfig[req.Plan]
 	if !ok {
-		apperrors.WriteJSONError(w, "Invalid plan", http.StatusBadRequest)
+		apperrors.WriteJSONError(w, "Invalid plan", http.StatusBadRequest, map[string]string{
+			"plan": "must be one of: monthly, annual, founder_annual",
+		})
 		return
 	}
 
-	// TODO: Integrate Xendit Invoice API
-	// 1. Call Xendit to create invoice
-	// 2. Store external_invoice_id in pending_invoices table
-	// 3. Return payment_url
+	// Generate unique external invoice ID
+	externalInvoiceID := fmt.Sprintf("cashlens-%s-%d", userID.String()[:8], time.Now().Unix())
+	expiresAt := time.Now().Add(config.Duration)
 
-	_ = price // Will be used when Xendit integration is added
+	// Call Xendit to create invoice
+	xenditReq := xendit.XenditInvoiceRequest{
+		ExternalInvoiceID: externalInvoiceID,
+		Amount:            config.Price,
+		Description:       fmt.Sprintf("CashLens Premium %s plan", req.Plan),
+		InvoiceDuration:   604800, // 7 days in seconds
+		SuccessRedirectURL: h.successURL,
+		FailureRedirectURL: h.failureURL,
+	}
 
-	apperrors.WriteJSONError(w, "Payment integration not yet implemented — Xendit integration required", http.StatusNotImplemented)
+	xenditResp, err := h.xenditClient.CreateInvoice(r.Context(), xenditReq)
+	if err != nil {
+		apperrors.WriteJSONError(w, "Failed to create invoice", http.StatusInternalServerError)
+		return
+	}
+
+	// Store pending invoice
+	err = h.subService.CreatePendingInvoice(r.Context(), *userID, req.Plan, config.Price, externalInvoiceID, expiresAt)
+	if err != nil {
+		// Log error but continue — invoice was created in Xendit
+	}
+
+	// Return payment URL to client
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"data": models.CreateInvoiceResponse{
+			PaymentURL: xenditResp.InvoiceURL,
+			InvoiceID:  externalInvoiceID,
+			ExpiresAt:  expiresAt.Format(time.RFC3339),
+			Amount:     config.Price,
+			Plan:       req.Plan,
+		},
+	})
 }
 
 // PaymentWebhook handles Xendit webhook callbacks

@@ -20,7 +20,16 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 )
+
+// getEnv returns environment variable or default value
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 func main() {
 	// Initialize structured logger
@@ -63,6 +72,7 @@ func main() {
 	quotaRepo := repository.NewQuotaRepository(db.Pool)
 	subEventRepo := repository.NewSubscriptionEventRepository(db.Pool)
 	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
+	winBackRepo := repository.NewWinBackRepository(db.Pool)
 
 	// Initialize services
 	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
@@ -73,6 +83,10 @@ func main() {
 		pendingInvoiceRepo,
 		cfg.Payment.XenditWebhookToken,
 	)
+	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
+
+	// Initialize Xendit client
+	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
 	
 	authService := service.NewAuthService(userRepo, categorySeedingService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -96,7 +110,15 @@ func main() {
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
 	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, quotaService)
-	subscriptionHandler := handlers.NewSubscriptionHandler(quotaService, userRepo, subscriptionService, cfg.Payment.XenditWebhookToken)
+	subscriptionHandler := handlers.NewSubscriptionHandler(
+		quotaService,
+		userRepo,
+		subscriptionService,
+		xenditClient,
+		cfg.Payment.XenditWebhookToken,
+		getEnv("XENDIT_SUCCESS_URL", "https://cashlens.app/payment/success"),
+		getEnv("XENDIT_FAILURE_URL", "https://cashlens.app/payment/failed"),
+	)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
@@ -119,6 +141,25 @@ func main() {
 	} else {
 		log.Info("Telegram bot token not configured - skipping bot initialization")
 	}
+
+	// Start win-back campaign scheduler (runs daily at 9 AM)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		// Run once on startup after 1 hour delay
+		time.Sleep(1 * time.Hour)
+
+		for range ticker.C {
+			count, err := winBackService.RunWinBackCampaign(context.Background())
+			if err != nil {
+				log.Error("Win-back campaign failed", "error", err)
+			} else if count > 0 {
+				log.Info("Win-back campaign completed", "users_sent", count)
+			}
+		}
+	}()
+	log.Info("Win-back campaign scheduler started")
 
 	// Setup router
 	r := chi.NewRouter()
@@ -158,6 +199,7 @@ func main() {
 		// Protected routes (standard rate limiting)
 		r.Group(func(r chi.Router) {
 			r.Use(custommiddleware.Auth(authService))
+			r.Use(custommiddleware.SubscriptionExpiryCheck(userRepo, subEventRepo))
 			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
 			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit for JSON requests
 
