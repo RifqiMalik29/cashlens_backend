@@ -12,6 +12,7 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
@@ -27,6 +28,11 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
 		return
 	}
 
@@ -166,6 +172,11 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req models.UpdateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
 		return
 	}
 

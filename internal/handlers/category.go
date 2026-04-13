@@ -10,6 +10,7 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
@@ -25,6 +26,11 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateCategoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
 		return
 	}
 
@@ -143,6 +149,11 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req models.UpdateCategoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
 		return
 	}
 

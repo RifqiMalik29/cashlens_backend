@@ -1,6 +1,9 @@
 package validator
 
 import (
+	"reflect"
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 )
 
@@ -9,6 +12,14 @@ var Validate *validator.Validate
 
 func init() {
 	Validate = validator.New()
+	// Use JSON tag names in error messages so clients see transaction_date, not TransactionDate
+	Validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+		if name == "-" || name == "" {
+			return fld.Name
+		}
+		return name
+	})
 }
 
 // ValidateStruct validates a struct and returns a map of field errors
@@ -41,6 +52,12 @@ func formatError(err validator.FieldError) string {
 		return err.Field() + " must be greater than " + err.Param()
 	case "gte":
 		return err.Field() + " must be greater than or equal to " + err.Param()
+	case "lte":
+		return err.Field() + " must be less than or equal to " + err.Param()
+	case "oneof":
+		return err.Field() + " must be one of: " + err.Param()
+	case "uuid":
+		return "Invalid " + err.Field() + " format"
 	default:
 		return "Invalid " + err.Field()
 	}

@@ -10,6 +10,7 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
@@ -123,6 +124,11 @@ func (h *DraftHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	var req models.ConfirmDraftRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
 		return
 	}
 
