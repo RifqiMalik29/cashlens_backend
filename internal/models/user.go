@@ -12,6 +12,7 @@ type User struct {
 	PasswordHash       string     `json:"-"` // Never expose in JSON
 	Name               *string    `json:"name,omitempty"`
 	Language           string     `json:"language"`
+	ExpoPushToken      string     `json:"-"` // never expose in API responses
 	SubscriptionTier   string     `json:"subscription_tier"`
 	SubscriptionExpiry *time.Time `json:"subscription_expires_at,omitempty"`
 	IsFounder          bool       `json:"is_founder"`
@@ -28,6 +29,10 @@ type CreateUserRequest struct {
 
 type UpdateLanguageRequest struct {
 	Language string `json:"language" validate:"required,oneof=id en"`
+}
+
+type UpdatePushTokenRequest struct {
+	PushToken string `json:"push_token"`
 }
 
 type LoginRequest struct {
