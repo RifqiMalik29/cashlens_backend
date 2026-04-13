@@ -83,6 +83,10 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 
 		if tier == "premium" && user.SubscriptionExpiry.Before(time.Now()) {
 			tier = "free"
+			// Downgrade in DB so quota enforcement reflects the correct tier
+			if err := h.userRepo.UpdateSubscription(r.Context(), *userID, "free", nil); err != nil {
+				slog.Error("[GetSubscriptionStatus] failed to downgrade expired subscription", "user_id", userID, "error", err)
+			}
 		}
 	}
 
@@ -163,7 +167,7 @@ func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Reque
 
 	xenditResp, err := h.xenditClient.CreateInvoice(r.Context(), xenditReq)
 	if err != nil {
-		fmt.Printf("XENDIT API ERROR: %v", err)
+		slog.Error("[CreateInvoice] Xendit API error", "error", err)
 		apperrors.WriteJSONError(w, "Failed to create invoice", http.StatusInternalServerError)
 		return
 	}

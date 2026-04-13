@@ -117,8 +117,8 @@ func main() {
 		subscriptionService,
 		xenditClient,
 		cfg.Payment.XenditWebhookToken,
-		getEnv("XENDIT_SUCCESS_URL", "https://cashlens.app/payment/success"),
-		getEnv("XENDIT_FAILURE_URL", "https://cashlens.app/payment/failed"),
+		getEnv("XENDIT_SUCCESS_URL", "cashlens://payment/success"),
+		getEnv("XENDIT_FAILURE_URL", "cashlens://payment/failed"),
 	)
 
 	// Initialize Telegram Bot
@@ -162,6 +162,20 @@ func main() {
 		}
 	}()
 	log.Info("Win-back campaign scheduler started")
+
+	// Start expired invoice cleanup (runs daily)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			count, err := pendingInvoiceRepo.ExpireStale(context.Background())
+			if err != nil {
+				log.Error("Expired invoice cleanup failed", "error", err)
+			} else if count > 0 {
+				log.Info("Expired invoices cleaned up", "count", count)
+			}
+		}
+	}()
 
 	// Setup router
 	r := chi.NewRouter()

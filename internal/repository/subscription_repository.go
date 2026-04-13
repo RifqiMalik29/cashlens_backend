@@ -54,6 +54,7 @@ type PendingInvoiceRepository interface {
 	Create(ctx context.Context, invoice *models.PendingInvoice) error
 	GetByExternalInvoiceID(ctx context.Context, externalInvoiceID string) (*models.PendingInvoice, error)
 	UpdateStatus(ctx context.Context, externalInvoiceID string, status string) error
+	ExpireStale(ctx context.Context) (int64, error)
 }
 
 type pendingInvoiceRepository struct {
@@ -105,4 +106,15 @@ func (r *pendingInvoiceRepository) UpdateStatus(ctx context.Context, externalInv
 		return fmt.Errorf("failed to update pending invoice status: %w", err)
 	}
 	return nil
+}
+
+func (r *pendingInvoiceRepository) ExpireStale(ctx context.Context) (int64, error) {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE pending_invoices SET status = 'expired', updated_at = NOW()
+		WHERE status = 'pending' AND expires_at < NOW()
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to expire stale invoices: %w", err)
+	}
+	return result.RowsAffected(), nil
 }
