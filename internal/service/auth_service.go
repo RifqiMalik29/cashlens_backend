@@ -19,6 +19,7 @@ type AuthService interface {
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
 	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
+	UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error
 	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
 	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
 }
@@ -158,6 +159,10 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User
 
 func (s *authService) UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error {
 	return s.userRepo.UpdateLanguage(ctx, userID, language)
+}
+
+func (s *authService) UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error {
+	return s.userRepo.UpdatePushToken(ctx, userID, token)
 }
 
 func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
