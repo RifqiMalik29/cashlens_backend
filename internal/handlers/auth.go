@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
@@ -179,4 +180,39 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": "Logged out successfully",
 	})
+}
+
+func (h *AuthHandler) GetTelegramStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	status, err := h.authService.GetTelegramStatus(r.Context(), *userID)
+	if err != nil {
+		apperrors.WriteJSONError(w, "Failed to get telegram status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"data": status})
+}
+
+func (h *AuthHandler) UnlinkTelegram(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.authService.UnlinkTelegram(r.Context(), *userID); err != nil {
+		apperrors.WriteJSONError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"message": "Telegram account unlinked successfully"})
 }

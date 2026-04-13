@@ -89,7 +89,7 @@ func main() {
 	)
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
 	
-	authService := service.NewAuthService(userRepo, categorySeedingService, cfg.JWT.Secret, cfg.JWT.Expiration)
+	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -221,12 +221,14 @@ func main() {
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
+			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
+			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
 			r.Post("/auth/logout", authHandler.Logout)
 
 			// Subscription
 			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
 			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
-		r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
+			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)

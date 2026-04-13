@@ -18,19 +18,23 @@ type AuthService interface {
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
+	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
+	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
 }
 
 type authService struct {
-	userRepo                 repository.UserRepository
-	categorySeedingService   CategorySeedingService
-	jwtSecret                string
-	jwtExpiration            time.Duration
+	userRepo               repository.UserRepository
+	categorySeedingService CategorySeedingService
+	chatRepo               repository.ChatLinkRepository
+	jwtSecret              string
+	jwtExpiration          time.Duration
 }
 
-func NewAuthService(userRepo repository.UserRepository, categorySeedingService CategorySeedingService, jwtSecret string, jwtExpiration time.Duration) AuthService {
+func NewAuthService(userRepo repository.UserRepository, categorySeedingService CategorySeedingService, chatRepo repository.ChatLinkRepository, jwtSecret string, jwtExpiration time.Duration) AuthService {
 	return &authService{
 		userRepo:               userRepo,
 		categorySeedingService: categorySeedingService,
+		chatRepo:               chatRepo,
 		jwtSecret:              jwtSecret,
 		jwtExpiration:          jwtExpiration,
 	}
@@ -142,6 +146,25 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User
 	}
 
 	return user, nil
+}
+
+func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
+	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
+	if err != nil {
+		return map[string]any{"is_linked": false}, nil
+	}
+	return map[string]any{
+		"is_linked": link.IsActive,
+		"chat_id":   link.ChatID,
+	}, nil
+}
+
+func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) error {
+	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
+	if err != nil {
+		return fmt.Errorf("no telegram link found for user")
+	}
+	return s.chatRepo.Delete(ctx, link.ID)
 }
 
 // Helper methods
