@@ -23,6 +23,7 @@ import (
 type BotService struct {
 	botToken          string
 	geminiAPIKey      string
+	geminiModel       string
 	draftSvc          service.DraftService
 	transactionSvc    service.TransactionService
 	budgetSvc         service.BudgetService
@@ -35,10 +36,11 @@ type BotService struct {
 	httpClient        *http.Client
 }
 
-func NewBotService(botToken string, geminiAPIKey string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
+func NewBotService(botToken string, geminiAPIKey string, geminiModel string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
 	return &BotService{
 		botToken:          botToken,
 		geminiAPIKey:      geminiAPIKey,
+		geminiModel:       geminiModel,
 		draftSvc:          draftSvc,
 		transactionSvc:    transactionSvc,
 		budgetSvc:         budgetSvc,
@@ -614,7 +616,7 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", b.geminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", b.geminiModel, b.geminiAPIKey)
 	
 	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
@@ -69,7 +71,7 @@ func (h *SubscriptionHandler) GetSubscriptionStatus(w http.ResponseWriter, r *ht
 
 	user, err := h.userRepo.GetByID(r.Context(), *userID)
 	if err != nil {
-		apperrors.WriteJSONError(w, "Failed to get user", http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, "User not found — please log in again", http.StatusUnauthorized)
 		return
 	}
 
@@ -155,19 +157,21 @@ func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Reque
 		Amount:            config.Price,
 		Description:       fmt.Sprintf("CashLens Premium %s plan", req.Plan),
 		InvoiceDuration:   604800, // 7 days in seconds
-		SuccessRedirectURL: h.successURL,
+		SuccessRedirectURL: h.successURL + "?invoice_id=" + externalInvoiceID,
 		FailureRedirectURL: h.failureURL,
 	}
 
 	xenditResp, err := h.xenditClient.CreateInvoice(r.Context(), xenditReq)
 	if err != nil {
+		fmt.Printf("XENDIT API ERROR: %v", err)
 		apperrors.WriteJSONError(w, "Failed to create invoice", http.StatusInternalServerError)
 		return
 	}
 
-	// Store pending invoice
-	err = h.subService.CreatePendingInvoice(r.Context(), *userID, req.Plan, config.Price, externalInvoiceID, expiresAt)
+	// Store pending invoice (including Xendit's internal ID for later verification)
+	err = h.subService.CreatePendingInvoice(r.Context(), *userID, req.Plan, config.Price, externalInvoiceID, xenditResp.ID, expiresAt)
 	if err != nil {
+		slog.Error("[CreateInvoice] failed to store pending invoice", "error", err)
 		// Log error but continue — invoice was created in Xendit
 	}
 
@@ -197,27 +201,68 @@ func (h *SubscriptionHandler) PaymentWebhook(w http.ResponseWriter, r *http.Requ
 	// 2. Read and parse payload
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		// Return 200 to prevent Xendit retries even on parse errors
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "message": "empty body"})
 		return
 	}
 
 	var payload models.XenditWebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "message": "invalid payload format"})
 		return
 	}
 
 	// 3. Process the webhook (idempotent)
-	err = h.subService.ProcessPaymentWebhook(r.Context(), payload.ExternalInvoiceID, payload.Status, payload.PaidAmount)
+	// Xendit sends status "SUCCEEDED" or "COMPLETED" in payment_session.completed event
+	err = h.subService.ProcessPaymentWebhook(r.Context(), payload.Data.ReferenceID, payload.Data.Status, payload.Data.Amount)
 	if err != nil {
 		// Log error but return 200 to prevent webhook retries
-		// In production: add proper slog.Error logging here
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "message": err.Error()})
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "message": "webhook processed"})
+}
+
+// VerifyPayment allows the client to manually trigger a payment check
+func (h *SubscriptionHandler) VerifyPayment(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		apperrors.WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		InvoiceID string `json:"invoice_id" validate:"required"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apperrors.WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		apperrors.WriteJSONError(w, "Validation failed", http.StatusBadRequest, validationErrors)
+		return
+	}
+
+	slog.Info("[VerifyPayment] received", "invoice_id", req.InvoiceID, "user_id", userID.String())
+
+	err := h.subService.VerifyPayment(r.Context(), *userID, req.InvoiceID)
+	if err != nil {
+		apperrors.WriteJSONError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "message": "payment verified and upgraded"})
 }
 
 // verifyWebhookToken verifies the Xendit callback token using HMAC

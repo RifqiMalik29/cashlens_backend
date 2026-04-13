@@ -74,6 +74,9 @@ func main() {
 	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
 	winBackRepo := repository.NewWinBackRepository(db.Pool)
 
+	// Initialize Xendit client
+	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
+
 	// Initialize services
 	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
 	quotaService := service.NewQuotaService(quotaRepo, userRepo)
@@ -81,12 +84,10 @@ func main() {
 		userRepo,
 		subEventRepo,
 		pendingInvoiceRepo,
+		xenditClient,
 		cfg.Payment.XenditWebhookToken,
 	)
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
-
-	// Initialize Xendit client
-	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
 	
 	authService := service.NewAuthService(userRepo, categorySeedingService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -109,7 +110,7 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, quotaService)
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, cfg.GeminiAPI.ScanningModel, quotaService, categoryRepo)
 	subscriptionHandler := handlers.NewSubscriptionHandler(
 		quotaService,
 		userRepo,
@@ -126,6 +127,7 @@ func main() {
 		botService = telegram.NewBotService(
 			cfg.Telegram.BotToken,
 			cfg.GeminiAPI.APIKey,
+			cfg.GeminiAPI.TelegramModel,
 			draftService,
 			transactionService,
 			budgetService,
@@ -170,7 +172,7 @@ func main() {
 	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
-		AllowedOrigins: []string{}, // Add your production domains here
+		AllowedOrigins: []string{"*"}, // Add your production domains here
 		Environment:    cfg.Server.Environment,
 	}))
 	r.Use(custommiddleware.SecurityHeaders(custommiddleware.SecurityHeadersConfig{
@@ -209,7 +211,8 @@ func main() {
 
 			// Subscription
 			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
-			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
+			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
+		r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)

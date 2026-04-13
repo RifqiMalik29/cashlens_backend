@@ -8,26 +8,38 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	apperrors "github.com/rifqimalik/cashlens-backend/internal/errors"
+	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
 
 type ReceiptHandler struct {
-	geminiAPIKey string
-	quotaService service.QuotaService
+	geminiAPIKey   string
+	geminiModel    string
+	quotaService   service.QuotaService
+	categoryRepo   repository.CategoryRepository
 }
 
-func NewReceiptHandler(geminiAPIKey string, quotaService service.QuotaService) *ReceiptHandler {
+func NewReceiptHandler(geminiAPIKey, geminiModel string, quotaService service.QuotaService, categoryRepo repository.CategoryRepository) *ReceiptHandler {
 	return &ReceiptHandler{
 		geminiAPIKey: geminiAPIKey,
+		geminiModel:  geminiModel,
 		quotaService: quotaService,
+		categoryRepo: categoryRepo,
 	}
 }
 
 func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context(), logger.GetDefault())
+	log = log.With("component", "receipt_scanner")
+
 	if h.geminiAPIKey == "" {
 		apperrors.WriteJSONError(w, "Gemini API key not configured", http.StatusNotImplemented)
 		return
@@ -39,15 +51,19 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Info("Receipt scan request started", "user_id", userID)
+
 	// Parse multipart form (max 10MB)
 	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
+		log.Error("Failed to parse multipart form", "error", err)
 		apperrors.WriteJSONError(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
+		log.Error("Image file required", "error", err)
 		apperrors.WriteJSONError(w, "Image file is required", http.StatusBadRequest)
 		return
 	}
@@ -56,33 +72,86 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 	// Validate file type using actual bytes, not client-controlled header
 	imageData, err := io.ReadAll(file)
 	if err != nil {
+		log.Error("Failed to read image file", "error", err)
 		apperrors.WriteJSONError(w, "Failed to read image", http.StatusInternalServerError)
 		return
 	}
 
 	detectedType := http.DetectContentType(imageData)
+	log.Info("Image type detected", "mime_type", detectedType, "size_bytes", len(imageData))
+
 	if detectedType != "image/jpeg" && detectedType != "image/png" {
+		log.Warn("Unsupported image type", "detected_type", detectedType)
 		apperrors.WriteJSONError(w, "Only JPEG and PNG images are supported", http.StatusBadRequest)
 		return
 	}
 
+	// Fetch user's expense categories to pass into the prompt
+	categories, err := h.categoryRepo.ListByUserID(r.Context(), *userID)
+	if err != nil {
+		log.Error("Failed to fetch user categories", "error", err)
+		apperrors.WriteJSONError(w, "Failed to load categories", http.StatusInternalServerError)
+		return
+	}
+	expenseCategories := make([]*models.Category, 0, len(categories))
+	for _, c := range categories {
+		if c.Type == models.CategoryTypeExpense {
+			expenseCategories = append(expenseCategories, c)
+		}
+	}
+
 	// Atomic quota check + increment (prevents TOCTOU race condition)
+	quotaStart := time.Now()
 	if err := h.quotaService.CheckAndIncrementScanQuota(r.Context(), *userID); err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
+			log.Warn("Scan quota exceeded", "latency_ms", time.Since(quotaStart).Milliseconds(), "error", appErr.Message)
 			apperrors.WriteAppError(w, appErr)
 		} else {
+			log.Error("Failed to check quota", "latency_ms", time.Since(quotaStart).Milliseconds(), "error", err)
 			apperrors.WriteJSONError(w, "Failed to check quota", http.StatusInternalServerError)
 		}
 		return
 	}
+	log.Info("Scan quota check passed", "latency_ms", time.Since(quotaStart).Milliseconds())
 
 	// Call Gemini API
-	result, err := h.callGeminiVision(imageData)
+	geminiStart := time.Now()
+	result, err := h.callGeminiVision(imageData, expenseCategories)
+	geminiLatency := time.Since(geminiStart)
+
 	if err != nil {
+		log.Error("Gemini API call failed", "latency_ms", geminiLatency.Milliseconds(), "error", err)
 		apperrors.WriteJSONError(w, fmt.Sprintf("Failed to scan receipt: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Extract key info for logging
+	amount := 0.0
+	merchant := ""
+	confidence := 0.0
+	if v, ok := result["amount"].(float64); ok {
+		amount = v
+	}
+	if v, ok := result["merchant"].(string); ok {
+		merchant = v
+	}
+	if v, ok := result["confidence"].(float64); ok {
+		confidence = v
+	}
+
+	itemCount := 0
+	if items, ok := result["items"].([]interface{}); ok {
+		itemCount = len(items)
+	}
+
+	log.Info("Receipt scan completed successfully",
+		"latency_ms", geminiLatency.Milliseconds(),
+		"merchant", merchant,
+		"amount", amount,
+		"confidence", confidence,
+		"items_count", itemCount,
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -126,7 +195,7 @@ type GeminiResponse struct {
 	} `json:"candidates"`
 }
 
-func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, error) {
+func (h *ReceiptHandler) callGeminiVision(imageData []byte, categories []*models.Category) (map[string]any, error) {
 	// Encode image to base64
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
@@ -136,8 +205,20 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte) (map[string]any, err
 		mimeType = "image/png"
 	}
 
-	// Build request
-	prompt := `You are a high-precision receipt parsing engine. Analyze this image and return ONLY a JSON object.
+	// Build id:name list for the prompt so Gemini returns the UUID directly
+	var categoryLines strings.Builder
+	fallbackID := ""
+	for _, c := range categories {
+		categoryLines.WriteString(fmt.Sprintf("- %s (%s)\n", c.ID.String(), c.Name))
+		if c.Name == "Lainnya" && fallbackID == "" {
+			fallbackID = c.ID.String()
+		}
+	}
+	if len(categories) == 0 {
+		categoryLines.WriteString("(no categories available)\n")
+	}
+
+	prompt := fmt.Sprintf(`You are a high-precision receipt parsing engine. Analyze this image and return ONLY a JSON object.
 
 Structure:
 {
@@ -145,26 +226,31 @@ Structure:
   "currency": "IDR",
   "date": "YYYY-MM-DD",
   "merchant": "<string: brand name from top of receipt>",
-  "category": "<string: internal_category_id>",
+  "category_id": "<string: MUST be one of the UUIDs listed below>",
   "items": [{"name": string, "price": number}],
   "confidence": <number: 0-100>
 }
 
+Available categories — format is: UUID (Name). Return only the UUID in category_id.
+%s
+Category Selection Logic:
+- Choose "Makanan & Minuman" for food, drinks, restaurants, cafes.
+- Choose "Transportasi" for fuel, parking, rideshare, toll.
+- Choose "Belanja" for clothes, electronics, department stores, supermarkets.
+- Choose "Hiburan" for movies, games, events.
+- Choose "Kesehatan" for pharmacy, clinic, hospital.
+- Choose "Pendidikan" for books, courses, school supplies.
+- Choose "Tagihan & Utilitas" for electricity, water, internet, phone bills.
+- Default to "Lainnya" (UUID: %s) if nothing matches.
+
 Merchant Extraction Rules:
 - The merchant is usually at the VERY TOP.
-- Stylized fonts can be tricky. Look at the item list to confirm if the merchant name appears there too.
 - Clean the name: Remove addresses, phone numbers, and slogans.
-
-Category Selection Logic:
-- cat_food: If you see items like "Mie", "Bakso", "Ayam", "Cendol", "Nasi", "Drink", "Food", or any restaurant names.
-- cat_shopping: For clothes, electronics, or general department stores.
-- cat_transport: For fuel, parking, or rideshare.
-- Default to "cat_other_expense" only if absolutely zero context is found.
 
 Anti-Hallucination Rules:
 - IGNORE "Tunai", "Cash", or "Bayar" lines when picking the "amount".
 - IGNORE "Kembalian" or "Change".
-- The "amount" must equal the sum of item prices if available.`
+- The "amount" must equal the sum of item prices if available.`, categoryLines.String(), fallbackID)
 
 	requestBody := GeminiRequest{
 		Contents: []GeminiContent{
@@ -187,7 +273,7 @@ Anti-Hallucination Rules:
 	}
 
 	// Call Gemini API
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", h.geminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", h.geminiModel, h.geminiAPIKey)
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {

@@ -25,9 +25,16 @@ type CreateInvoiceResponse struct {
 	Plan       string  `json:"plan"`
 }
 
-type WebhookPayload struct {
-	ExternalInvoiceID string  `json:"external_invoice_id"`
-	Status            string  `json:"status"`
-	PaidAmount        float64 `json:"paid_amount"`
-	PaidAt            string  `json:"paid_at,omitempty"`
+// XenditWebhookPayload matches Xendit's payment_session.completed event structure
+type XenditWebhookPayload struct {
+	Event string                 `json:"event"`
+	Data  XenditWebhookPayloadData `json:"data"`
+}
+
+type XenditWebhookPayloadData struct {
+	ReferenceID      string  `json:"reference_id"`
+	PaymentSessionID string  `json:"payment_session_id"`
+	PaymentID        string  `json:"payment_id"`
+	Status           string  `json:"status"`
+	Amount           float64 `json:"amount"`
 }

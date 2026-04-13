@@ -16,6 +16,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
 	UpdateSubscription(ctx context.Context, userID uuid.UUID, tier string, expiresAt *time.Time) error
+	UpdateFounder(ctx context.Context, userID uuid.UUID, isFounder bool) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -87,6 +88,15 @@ func (r *userRepository) Update(ctx context.Context, user *models.User) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateFounder(ctx context.Context, userID uuid.UUID, isFounder bool) error {
+	query := `UPDATE users SET is_founder = $2, updated_at = NOW() WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, isFounder)
+	if err != nil {
+		return fmt.Errorf("failed to update founder flag: %w", err)
 	}
 	return nil
 }

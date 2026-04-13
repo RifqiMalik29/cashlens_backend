@@ -66,11 +66,11 @@ func NewPendingInvoiceRepository(pool *pgxpool.Pool) PendingInvoiceRepository {
 
 func (r *pendingInvoiceRepository) Create(ctx context.Context, invoice *models.PendingInvoice) error {
 	query := `
-		INSERT INTO pending_invoices (id, user_id, external_invoice_id, plan, amount, status, expires_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO pending_invoices (id, user_id, external_invoice_id, xendit_invoice_id, plan, amount, status, expires_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := r.pool.Exec(ctx, query,
-		invoice.ID, invoice.UserID, invoice.ExternalInvoiceID, invoice.Plan,
+		invoice.ID, invoice.UserID, invoice.ExternalInvoiceID, invoice.XenditInvoiceID, invoice.Plan,
 		invoice.Amount, invoice.Status, invoice.ExpiresAt, time.Now(), time.Now(),
 	)
 	if err != nil {
@@ -82,11 +82,11 @@ func (r *pendingInvoiceRepository) Create(ctx context.Context, invoice *models.P
 func (r *pendingInvoiceRepository) GetByExternalInvoiceID(ctx context.Context, externalInvoiceID string) (*models.PendingInvoice, error) {
 	invoice := &models.PendingInvoice{}
 	query := `
-		SELECT id, user_id, external_invoice_id, plan, amount, status, expires_at, created_at, updated_at
+		SELECT id, user_id, external_invoice_id, COALESCE(xendit_invoice_id, ''), plan, amount, status, expires_at, created_at, updated_at
 		FROM pending_invoices WHERE external_invoice_id = $1
 	`
 	err := r.pool.QueryRow(ctx, query, externalInvoiceID).Scan(
-		&invoice.ID, &invoice.UserID, &invoice.ExternalInvoiceID, &invoice.Plan,
+		&invoice.ID, &invoice.UserID, &invoice.ExternalInvoiceID, &invoice.XenditInvoiceID, &invoice.Plan,
 		&invoice.Amount, &invoice.Status, &invoice.ExpiresAt, &invoice.CreatedAt, &invoice.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
