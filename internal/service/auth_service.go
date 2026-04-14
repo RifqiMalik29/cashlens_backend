@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,6 +19,8 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error)
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
+	ConfirmEmail(ctx context.Context, token string) error
+	ResendConfirmation(ctx context.Context, email string) error
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
 	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
@@ -28,15 +33,24 @@ type authService struct {
 	userRepo               repository.UserRepository
 	categorySeedingService CategorySeedingService
 	chatRepo               repository.ChatLinkRepository
+	mailer                 mailer.Mailer
 	jwtSecret              string
 	jwtExpiration          time.Duration
 }
 
-func NewAuthService(userRepo repository.UserRepository, categorySeedingService CategorySeedingService, chatRepo repository.ChatLinkRepository, jwtSecret string, jwtExpiration time.Duration) AuthService {
+func NewAuthService(
+	userRepo repository.UserRepository,
+	categorySeedingService CategorySeedingService,
+	chatRepo repository.ChatLinkRepository,
+	mailer mailer.Mailer,
+	jwtSecret string,
+	jwtExpiration time.Duration,
+) AuthService {
 	return &authService{
 		userRepo:               userRepo,
 		categorySeedingService: categorySeedingService,
 		chatRepo:               chatRepo,
+		mailer:                 mailer,
 		jwtSecret:              jwtSecret,
 		jwtExpiration:          jwtExpiration,
 	}
@@ -61,15 +75,25 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		lang = "id"
 	}
 
+	// Generate confirmation token
+	token, err := generateEmailConfirmationToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate confirmation token: %w", err)
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+
 	// Create user
 	user = &models.User{
-		ID:           uuid.New(),
-		Email:        req.Email,
-		PasswordHash: p,
-		Name:         &req.Name,
-		Language:     lang,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:                    uuid.New(),
+		Email:                 req.Email,
+		PasswordHash:          p,
+		Name:                  &req.Name,
+		Language:              lang,
+		IsConfirmed:           false,
+		ConfirmationToken:     &token,
+		ConfirmationExpiresAt: &expiresAt,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
@@ -81,15 +105,15 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		slog.Error("Failed to seed default categories for new user", "user_id", user.ID, "error", err)
 	}
 
-	// Generate JWT token
-	token, err := generateToken(user.ID, s.jwtSecret, s.jwtExpiration)
-	if err != nil {
-		return nil, fmt.Errorf("Token failed to produce: %w", err)
-	}
+	// Send confirmation email asynchronously
+	go func() {
+		if err := s.mailer.SendConfirmationEmail(user.Email, token); err != nil {
+			slog.Error("Failed to send confirmation email", "email", user.Email, "error", err)
+		}
+	}()
 
 	return &models.AuthResponse{
-		AccessToken: token,
-		User:  *user,
+		User: *user,
 	}, nil
 }
 
@@ -107,6 +131,11 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
+	// Check if email is confirmed
+	if !res.IsConfirmed {
+		return nil, fmt.Errorf("please confirm your email before logging in")
+	}
+
 	// Generate JWT token
 	token, err := generateToken(res.ID, s.jwtSecret, s.jwtExpiration)
 	if err != nil {
@@ -115,7 +144,7 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 
 	return &models.AuthResponse{
 		AccessToken: token,
-		User:  *res,
+		User:        *res,
 	}, nil
 }
 
@@ -184,7 +213,61 @@ func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) erro
 	return s.chatRepo.Delete(ctx, link.ID)
 }
 
+func (s *authService) ConfirmEmail(ctx context.Context, token string) error {
+	user, err := s.userRepo.GetByConfirmationToken(ctx, token)
+	if err != nil {
+		return fmt.Errorf("invalid or expired confirmation token")
+	}
+
+	if user.ConfirmationExpiresAt != nil && time.Now().After(*user.ConfirmationExpiresAt) {
+		return fmt.Errorf("confirmation token has expired")
+	}
+
+	return s.userRepo.UpdateConfirmationStatus(ctx, user.ID, true)
+}
+
+func (s *authService) ResendConfirmation(ctx context.Context, email string) error {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if user.IsConfirmed {
+		return fmt.Errorf("email is already confirmed")
+	}
+
+	// Generate new token
+	token, err := generateEmailConfirmationToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate confirmation token: %w", err)
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	// Update user with new token
+	err = s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to update confirmation token: %w", err)
+	}
+
+	// Send confirmation email asynchronously
+	go func() {
+		if err := s.mailer.SendConfirmationEmail(user.Email, token); err != nil {
+			slog.Error("Failed to send confirmation email", "email", user.Email, "error", err)
+		}
+	}()
+
+	return nil
+}
+
 // Helper methods
+func generateEmailConfirmationToken(length int) (string, error) {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(bytes), err
