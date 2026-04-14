@@ -50,7 +50,7 @@ func (r *categoryRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 }
 
 func (r *categoryRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Category, error) {
-	query := `SELECT id, user_id, name, type, icon, color, is_system, created_at, updated_at FROM categories WHERE user_id = $1 OR user_id IS NULL`
+	query := `SELECT id, user_id, name, type, icon, color, is_system, created_at, updated_at FROM categories WHERE user_id = $1 OR (user_id IS NULL AND NOT EXISTS (SELECT 1 FROM categories WHERE user_id = $1))`
 
 	res, err := r.db.Query(ctx, query, userID)
 	if err != nil {
