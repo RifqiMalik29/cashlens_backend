@@ -17,6 +17,17 @@ type Config struct {
 	GeminiAPI  Gemini
 	Telegram   Telegram
 	Payment    Payment
+	Mail       MailConfig
+}
+
+type MailConfig struct {
+	Host           string
+	Port           int
+	User           string
+	Password       string
+	From           string
+	BaseURL        string
+	MobileDeepLink string
 }
 
 type ServerConfig struct {
@@ -93,6 +104,15 @@ func Load() (*Config, error) {
 		Payment: Payment{
 			XenditWebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
 			XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
+		},
+		Mail: MailConfig{
+			Host:     getEnv("SMTP_HOST", "localhost"),
+			Port:     parseInt(getEnv("SMTP_PORT", "587"), 587),
+			User:     os.Getenv("SMTP_USER"),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     getEnv("SMTP_FROM", "noreply@cashlens.com"),
+			BaseURL:  getEnv("BASE_URL", "http://localhost:8080"),
+			MobileDeepLink: getEnv("MOBILE_DEEPLINK", "cashlens://auth/confirm"),
 		},
 	}
 
