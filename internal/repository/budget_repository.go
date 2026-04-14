@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 )
@@ -43,6 +44,9 @@ func (r *budgetRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.B
 	query := `SELECT id, user_id, category_id, amount, period_type, start_date, end_date, alert_threshold, created_at, updated_at FROM budgets WHERE id = $1`
 
 	err := r.db.QueryRow(ctx, query, id).Scan(&budget.ID, &budget.UserID, &budget.CategoryID, &budget.Amount, &budget.PeriodType, &budget.StartDate, &budget.EndDate, &budget.AlertThreshold, &budget.CreatedAt, &budget.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("budget not found")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get budget: %w", err)
 	}

@@ -15,7 +15,7 @@ type BudgetService interface {
 	Create(ctx context.Context, userID uuid.UUID, req models.CreateBudgetRequest) (*models.Budget, error)
 	Get(ctx context.Context, id, userID uuid.UUID) (*models.Budget, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.Budget, error)
-	Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateBudgetRequest) error
+	Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateBudgetRequest) (*models.Budget, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
@@ -68,7 +68,7 @@ func (s *budgetService) Create(ctx context.Context, userID uuid.UUID, req models
 func (s *budgetService) Get(ctx context.Context, id, userID uuid.UUID) (*models.Budget, error) {
 	budget, err := s.budgetRepo.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get budget: %w", err)
+		return nil, errors.NewNotFound("Budget not found")
 	}
 
 	if budget.UserID != userID {
@@ -87,14 +87,14 @@ func (s *budgetService) List(ctx context.Context, userID uuid.UUID) ([]*models.B
 	return budgets, nil
 }
 
-func (s *budgetService) Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateBudgetRequest) error {
+func (s *budgetService) Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateBudgetRequest) (*models.Budget, error) {
 	budget, err := s.budgetRepo.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to get budget: %w", err)
+		return nil, errors.NewNotFound("Budget not found")
 	}
 
 	if budget.UserID != userID {
-		return errors.NewForbidden("Forbidden access")
+		return nil, errors.NewForbidden("Forbidden access")
 	}
 
 	if req.CategoryID != nil {
@@ -107,7 +107,7 @@ func (s *budgetService) Update(ctx context.Context, id, userID uuid.UUID, req mo
 
 	if req.PeriodType != nil {
 		if *req.PeriodType != models.BudgetPeriodWeekly && *req.PeriodType != models.BudgetPeriodMonthly && *req.PeriodType != models.BudgetPeriodYearly {
-			return errors.NewBadRequest("Invalid period type. Must be weekly, monthly, or yearly")
+			return nil, errors.NewBadRequest("Invalid period type. Must be weekly, monthly, or yearly")
 		}
 		budget.PeriodType = *req.PeriodType
 	}
@@ -118,13 +118,13 @@ func (s *budgetService) Update(ctx context.Context, id, userID uuid.UUID, req mo
 
 	if req.EndDate != nil {
 		if req.EndDate.Before(budget.StartDate) {
-			return errors.NewBadRequest("End date must be after start date")
+			return nil, errors.NewBadRequest("End date must be after start date")
 		}
 		budget.EndDate = *req.EndDate
 	}
 
 	if req.AlertThreshold != nil && (*req.AlertThreshold < 0 || *req.AlertThreshold > 100) {
-		return errors.NewBadRequest("Alert threshold must be between 0 and 100")
+		return nil, errors.NewBadRequest("Alert threshold must be between 0 and 100")
 	} else if req.AlertThreshold != nil {
 		budget.AlertThreshold = req.AlertThreshold
 	}
@@ -133,10 +133,10 @@ func (s *budgetService) Update(ctx context.Context, id, userID uuid.UUID, req mo
 
 	err = s.budgetRepo.Update(ctx, budget)
 	if err != nil {
-		return fmt.Errorf("failed to update budget: %w", err)
+		return nil, fmt.Errorf("failed to update budget: %w", err)
 	}
 
-	return nil
+	return budget, nil
 }
 
 func (s *budgetService) Delete(ctx context.Context, id, userID uuid.UUID) error {

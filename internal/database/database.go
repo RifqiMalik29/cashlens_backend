@@ -64,7 +64,7 @@ func Migrate(databaseURL, migrationsDir string) error {
 		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
-	if err := goose.Up(sqlDB, migrationsDir); err != nil {
+	if err := goose.Up(sqlDB, migrationsDir, goose.WithAllowMissing()); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 

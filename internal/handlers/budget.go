@@ -135,7 +135,7 @@ func (h *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.budgetService.Update(r.Context(), budgetID, *userID, req)
+	res, err := h.budgetService.Update(r.Context(), budgetID, *userID, req)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -149,6 +149,7 @@ func (h *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
+		"data":    res,
 		"message": "Budget updated successfully",
 	})
 }
