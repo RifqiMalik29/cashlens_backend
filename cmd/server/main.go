@@ -20,6 +20,7 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 )
 
@@ -91,7 +92,8 @@ func main() {
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
 	
-	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, cfg.JWT.Secret, cfg.JWT.Expiration)
+	mailerService := mailer.NewMailer(cfg.Mail)
+	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -107,7 +109,7 @@ func main() {
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
-	authHandler := handlers.NewAuthHandler(authService, refreshTokenService)
+	authHandler := handlers.NewAuthHandler(authService, refreshTokenService, cfg)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
@@ -244,6 +246,8 @@ func main() {
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/refresh", authHandler.Refresh)
+			r.Get("/auth/confirm", authHandler.ConfirmEmail)
+			r.Post("/auth/resend-confirmation", authHandler.ResendConfirmation)
 		})
 
 		// Protected routes (standard rate limiting)

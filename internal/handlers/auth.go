@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
@@ -12,14 +13,16 @@ import (
 )
 
 type AuthHandler struct {
-	authService        service.AuthService
+	authService         service.AuthService
 	refreshTokenService service.RefreshTokenService
+	config              *config.Config
 }
 
-func NewAuthHandler(authService service.AuthService, refreshTokenService service.RefreshTokenService) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, refreshTokenService service.RefreshTokenService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		authService:        authService,
+		authService:         authService,
 		refreshTokenService: refreshTokenService,
+		config:              cfg,
 	}
 }
 
@@ -57,16 +60,56 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate refresh token
-	refreshToken, _ := h.refreshTokenService.GenerateRefreshToken(r.Context(), res.User.ID, r.RemoteAddr, r.UserAgent())
-	if refreshToken != nil {
-		res.RefreshToken = refreshToken.Token
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]any{
-		"data": res,
+		"message": "Registration successful. Please check your email to confirm your account.",
+		"data":    res,
+	})
+}
+
+func (h *AuthHandler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Confirmation token is required"})
+		return
+	}
+
+	if err := h.authService.ConfirmEmail(r.Context(), token); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Redirect to mobile app
+	http.Redirect(w, r, h.config.Mail.MobileDeepLink, http.StatusSeeOther)
+}
+
+func (h *AuthHandler) ResendConfirmation(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
+		return
+	}
+
+	if err := h.authService.ResendConfirmation(r.Context(), req.Email); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Confirmation email resent successfully.",
 	})
 }
 
