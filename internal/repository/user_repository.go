@@ -19,6 +19,9 @@ type UserRepository interface {
 	UpdateFounder(ctx context.Context, userID uuid.UUID, isFounder bool) error
 	UpdateLanguage(ctx context.Context, userID uuid.UUID, language string) error
 	UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error
+	GetByConfirmationToken(ctx context.Context, token string) (*models.User, error)
+	UpdateConfirmationStatus(ctx context.Context, userID uuid.UUID, isConfirmed bool) error
+	UpdateConfirmationToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -32,11 +35,12 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 
 func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, name, language, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (id, email, password_hash, name, language, is_confirmed, confirmation_token, confirmation_expires_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := r.db.Exec(ctx, query,
 		user.ID, user.Email, user.PasswordHash, user.Name, user.Language,
+		user.IsConfirmed, user.ConfirmationToken, user.ConfirmationExpiresAt,
 		user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
@@ -48,12 +52,13 @@ func (r *userRepository) Create(ctx context.Context, user *models.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, is_confirmed, confirmation_token, confirmation_expires_at, created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
+		&user.IsConfirmed, &user.ConfirmationToken, &user.ConfirmationExpiresAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -65,12 +70,13 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, created_at, updated_at
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, is_confirmed, confirmation_token, confirmation_expires_at, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
 		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
+		&user.IsConfirmed, &user.ConfirmationToken, &user.ConfirmationExpiresAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -137,6 +143,50 @@ func (r *userRepository) UpdateSubscription(ctx context.Context, userID uuid.UUI
 	_, err := r.db.Exec(ctx, query, userID, tier, expiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	return nil
+}
+
+func (r *userRepository) GetByConfirmationToken(ctx context.Context, token string) (*models.User, error) {
+	user := &models.User{}
+	query := `
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, is_confirmed, confirmation_token, confirmation_expires_at, created_at, updated_at
+		FROM users WHERE confirmation_token = $1
+	`
+	err := r.db.QueryRow(ctx, query, token).Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
+		&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
+		&user.IsConfirmed, &user.ConfirmationToken, &user.ConfirmationExpiresAt,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by token: %w", err)
+	}
+	return user, nil
+}
+
+func (r *userRepository) UpdateConfirmationStatus(ctx context.Context, userID uuid.UUID, isConfirmed bool) error {
+	query := `
+		UPDATE users
+		SET is_confirmed = $2, confirmation_token = NULL, confirmation_expires_at = NULL, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.Exec(ctx, query, userID, isConfirmed)
+	if err != nil {
+		return fmt.Errorf("failed to update confirmation status: %w", err)
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateConfirmationToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error {
+	query := `
+		UPDATE users
+		SET confirmation_token = $2, confirmation_expires_at = $3, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.Exec(ctx, query, userID, token, expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to update confirmation token: %w", err)
 	}
 	return nil
 }

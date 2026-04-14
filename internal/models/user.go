@@ -13,11 +13,14 @@ type User struct {
 	Name               *string    `json:"name,omitempty"`
 	Language           string     `json:"language"`
 	ExpoPushToken      string     `json:"-"` // never expose in API responses
-	SubscriptionTier   string     `json:"subscription_tier"`
-	SubscriptionExpiry *time.Time `json:"subscription_expires_at,omitempty"`
-	IsFounder          bool       `json:"is_founder"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	SubscriptionTier      string     `json:"subscription_tier"`
+	SubscriptionExpiry    *time.Time `json:"subscription_expires_at,omitempty"`
+	IsFounder             bool       `json:"is_founder"`
+	IsConfirmed           bool       `json:"is_confirmed"`
+	ConfirmationToken     *string    `json:"-"` // never expose in API responses
+	ConfirmationExpiresAt *time.Time `json:"-"` // never expose in API responses
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type CreateUserRequest struct {
