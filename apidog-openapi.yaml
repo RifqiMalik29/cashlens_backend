@@ -34,6 +34,21 @@ components:
         name:
           type: string
           example: "John Doe"
+        language:
+          type: string
+          enum: [id, en]
+          example: "id"
+        subscription_tier:
+          type: string
+          enum: [free, premium]
+          example: "free"
+        subscription_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_founder:
+          type: boolean
+          example: false
         created_at:
           type: string
           format: date-time
@@ -60,6 +75,10 @@ components:
           type: string
           maxLength: 100
           example: "John Doe"
+        language:
+          type: string
+          enum: [id, en]
+          default: "id"
 
     LoginRequest:
       type: object
@@ -79,9 +98,12 @@ components:
     AuthResponse:
       type: object
       properties:
-        token:
+        access_token:
           type: string
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          example: "def456..."
         user:
           $ref: '#/components/schemas/User'
 
@@ -112,6 +134,123 @@ components:
             expires_in:
               type: integer
               example: 86400
+
+    UpdateLanguageRequest:
+      type: object
+      required:
+        - language
+      properties:
+        language:
+          type: string
+          enum: [id, en]
+          example: "id"
+
+    UpdatePushTokenRequest:
+      type: object
+      required:
+        - push_token
+      properties:
+        push_token:
+          type: string
+          example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+
+    TelegramStatusResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            is_linked:
+              type: boolean
+              example: true
+            chat_id:
+              type: integer
+              format: int64
+              example: 123456789
+
+    SubscriptionStatus:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [free, premium]
+          example: "free"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        quota:
+          $ref: '#/components/schemas/QuotaStatus'
+
+    QuotaStatus:
+      type: object
+      properties:
+        transactions_used:
+          type: integer
+          example: 5
+        transactions_limit:
+          type: integer
+          example: 20
+        scans_used:
+          type: integer
+          example: 2
+        scans_limit:
+          type: integer
+          example: 5
+
+    CreateInvoiceRequest:
+      type: object
+      required:
+        - plan
+      properties:
+        plan:
+          type: string
+          enum: [monthly, annual, founder_annual]
+          example: "monthly"
+
+    CreateInvoiceResponse:
+      type: object
+      properties:
+        payment_url:
+          type: string
+          example: "https://checkout.xendit.co/v2/..."
+        invoice_id:
+          type: string
+          example: "cashlens-abcd1234-1620000000"
+        expires_at:
+          type: string
+          format: date-time
+        amount:
+          type: number
+          example: 15000
+        plan:
+          type: string
+          example: "monthly"
+
+    VerifyPaymentRequest:
+      type: object
+      required:
+        - invoice_id
+      properties:
+        invoice_id:
+          type: string
+          example: "cashlens-abcd1234-1620000000"
+
+    XenditWebhookPayload:
+      type: object
+      properties:
+        event:
+          type: string
+          example: "payment_session.completed"
+        data:
+          type: object
+          properties:
+            reference_id:
+              type: string
+            status:
+              type: string
+            amount:
+              type: number
 
     ErrorResponse:
       type: object
@@ -441,37 +580,31 @@ paths:
               email: "user@example.com"
               password: "securePassword123"
               name: "John Doe"
+              language: "en"
       responses:
         '201':
           description: User registered successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthResponse'
               example:
-                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                user:
-                  id: "550e8400-e29b-41d4-a716-446655440000"
-                  email: "user@example.com"
-                  name: "John Doe"
-                  created_at: "2026-04-12T10:30:00Z"
-                  updated_at: "2026-04-12T10:30:00Z"
+                data:
+                  access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  refresh_token: "def456..."
+                  user:
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    email: "user@example.com"
+                    name: "John Doe"
+                    language: "en"
+                    subscription_tier: "free"
+                    created_at: "2026-04-12T10:30:00Z"
+                    updated_at: "2026-04-12T10:30:00Z"
         '400':
           description: Validation error or email already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                validation_error:
-                  value:
-                    error: "Validation failed"
-                    details:
-                      Email: "Invalid email format"
-                      Password: "Password must be at least 8 characters"
-                email_exists:
-                  value:
-                    error: "Email is already registered"
 
   /api/v1/auth/login:
     post:
@@ -494,15 +627,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthResponse'
               example:
-                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                user:
-                  id: "550e8400-e29b-41d4-a716-446655440000"
-                  email: "user@example.com"
-                  name: "John Doe"
-                  created_at: "2026-04-12T10:30:00Z"
-                  updated_at: "2026-04-12T10:30:00Z"
+                data:
+                  access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  refresh_token: "def456..."
+                  user:
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    email: "user@example.com"
+                    name: "John Doe"
+                    language: "id"
+                    subscription_tier: "free"
+                    created_at: "2026-04-12T10:30:00Z"
+                    updated_at: "2026-04-12T10:30:00Z"
         '401':
           description: Invalid credentials
           content:
@@ -576,6 +716,9 @@ paths:
                   id: "550e8400-e29b-41d4-a716-446655440000"
                   email: "user@example.com"
                   name: "John Doe"
+                  language: "id"
+                  subscription_tier: "free"
+                  is_founder: false
                   created_at: "2026-04-12T10:30:00Z"
                   updated_at: "2026-04-12T10:30:00Z"
         '401':
@@ -586,6 +729,96 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Unauthorized"
+
+  /api/v1/auth/telegram/status:
+    get:
+      summary: Get Telegram link status
+      description: Check if the user's account is linked to a Telegram chat
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramStatusResponse'
+        '401':
+          description: Unauthorized
+    delete:
+      summary: Unlink Telegram
+      description: Remove the link between the user's account and Telegram
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Unlinked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Telegram account unlinked successfully"
+        '401':
+          description: Unauthorized
+
+  /api/v1/auth/language:
+    patch:
+      summary: Update language
+      description: Update the user's preferred language
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLanguageRequest'
+      responses:
+        '200':
+          description: Language updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Language updated successfully"
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+
+  /api/v1/auth/push-token:
+    patch:
+      summary: Update push token
+      description: Update the user's Expo push token for notifications
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePushTokenRequest'
+      responses:
+        '200':
+          description: Token updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Push token updated successfully"
+        '401':
+          description: Unauthorized
 
   /api/v1/auth/logout:
     post:
@@ -612,6 +845,106 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Unauthorized"
+
+  /api/v1/subscription:
+    get:
+      summary: Get subscription status
+      description: Get the authenticated user's current subscription tier, expiry, and quota usage
+      tags:
+        - Subscription
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionStatus'
+        '401':
+          description: Unauthorized
+
+  /api/v1/subscription/verify:
+    post:
+      summary: Verify payment
+      description: Manually trigger a check for a pending invoice to upgrade the user's tier
+      tags:
+        - Subscription
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyPaymentRequest'
+      responses:
+        '200':
+          description: Payment verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "payment verified and upgraded"
+        '400':
+          description: Verification failed or invalid invoice
+        '401':
+          description: Unauthorized
+
+  /api/v1/payments/create-invoice:
+    post:
+      summary: Create payment invoice
+      description: Generate a Xendit invoice for a subscription plan
+      tags:
+        - Payments
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvoiceRequest'
+      responses:
+        '200':
+          description: Invoice created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreateInvoiceResponse'
+        '400':
+          description: Invalid plan
+        '401':
+          description: Unauthorized
+
+  /api/v1/webhooks/payment:
+    post:
+      summary: Payment webhook
+      description: Callback for Xendit payment notifications
+      tags:
+        - Webhooks
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+              example:
+                status: "ok"
+                message: "webhook processed"
 
   /api/v1/categories:
     post:
@@ -1302,7 +1635,7 @@ paths:
   /api/v1/receipts/scan:
     post:
       summary: Scan receipt
-      description: Scan a receipt image and extract transaction data using AI
+      description: Scan a receipt image and extract transaction data using AI. Supports cascading fallback to OCR text if image vision fails.
       tags:
         - Receipts
       security:
@@ -1318,6 +1651,9 @@ paths:
                   type: string
                   format: binary
                   description: Receipt image (JPEG or PNG, max 10MB)
+                ocr_text:
+                  type: string
+                  description: Optional OCR text extracted locally (e.g., via ML Kit) for fallback parsing.
               required:
                 - image
       responses:

@@ -30,11 +30,16 @@ type ReceiptHandler struct {
 
 func NewReceiptHandler(geminiAPIKey, geminiModel string, quotaService service.QuotaService, categoryRepo repository.CategoryRepository) *ReceiptHandler {
 	return &ReceiptHandler{
-		geminiAPIKey:   geminiAPIKey,
-		geminiModel:    geminiModel,
-		fallbackModels: []string{"gemini-2.5-flash", "gemini-2.0-flash"},
-		quotaService:   quotaService,
-		categoryRepo:   categoryRepo,
+		geminiAPIKey: geminiAPIKey,
+		geminiModel:  geminiModel,
+		fallbackModels: []string{
+			"gemini-3-flash-preview",
+			"gemini-2.5-flash",
+			"gemini-2.0-flash",
+			"gemini-2.5-pro",
+		},
+		quotaService: quotaService,
+		categoryRepo: categoryRepo,
 	}
 }
 
@@ -62,6 +67,9 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 		apperrors.WriteJSONError(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
+
+	// Read optional OCR text from mobile app (ML Kit Stage 2 fallback)
+	ocrText := r.FormValue("ocr_text")
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
@@ -119,7 +127,7 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 
 	// Call Gemini API
 	geminiStart := time.Now()
-	result, err := h.callGeminiVision(imageData, expenseCategories)
+	result, err := h.callGeminiVision(imageData, ocrText, expenseCategories)
 	geminiLatency := time.Since(geminiStart)
 
 	if err != nil {
@@ -197,24 +205,163 @@ type GeminiResponse struct {
 	} `json:"candidates"`
 }
 
-func (h *ReceiptHandler) callGeminiVision(imageData []byte, categories []*models.Category) (map[string]any, error) {
-	allModels := append([]string{h.geminiModel}, h.fallbackModels...)
-	for _, model := range allModels {
-		var lastErr error
-		for attempt := range 3 {
+func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, categories []*models.Category) (map[string]any, error) {
+	log := logger.GetDefault().With("component", "gemini_vision_service")
+	
+	// Create a unique list of models to try, starting with the primary model
+	modelSet := make(map[string]bool)
+	allModels := []string{h.geminiModel}
+	modelSet[h.geminiModel] = true
+	
+	for _, m := range h.fallbackModels {
+		if !modelSet[m] {
+			allModels = append(allModels, m)
+			modelSet[m] = true
+		}
+	}
+
+	var lastErr error
+	for i, model := range allModels {
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt > 0 || model != h.geminiModel {
+				log.Info("Retrying receipt scan with model", "model", model, "attempt", attempt+1)
+			}
+			
 			result, err := h.callGeminiVisionWithModel(imageData, categories, model)
 			if err == nil {
+				// If confidence is low and we have more models to try, continue to a stronger model
+				conf, _ := result["confidence"].(float64)
+				if conf < 50 && i < len(allModels)-1 {
+					log.Warn("Low confidence result, trying next model", "model", model, "confidence", conf)
+					break // break the attempt loop, continue to the next model
+				}
 				return result, nil
 			}
+			
 			lastErr = err
-			if !strings.Contains(err.Error(), "status 503") {
-				return nil, err
+			
+			// If it's a 400 (Bad Request) but NOT a 429 (Rate Limit), it's likely a prompt or image issue 
+			// that won't be fixed by retrying or switching models.
+			if strings.Contains(err.Error(), "status 400") && !strings.Contains(err.Error(), "429") {
+				break // Try next model
 			}
-			time.Sleep(time.Duration(1<<attempt) * time.Second) // 1s, 2s, 4s
+
+			// For 429, 500, 503, or parsing errors, we wait then either retry or switch models
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
 		}
-		_ = lastErr
 	}
-	return nil, fmt.Errorf("AI service is currently unavailable due to high demand, please try again in a moment")
+	
+	// Final Fallback: If vision failed but we have OCR text from the mobile app, 
+	// try one last time using ONLY the text. This is Stage 2 in the cascading strategy.
+	if ocrText != "" {
+		log.Info("Vision scanning failed, falling back to text-only parsing (Stage 2)")
+		// Use the strongest model for the final text-only attempt
+		result, err := h.callGeminiTextWithModel(ocrText, categories, "gemini-2.5-pro")
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+	}
+	
+	if lastErr != nil {
+		return nil, fmt.Errorf("receipt scanning failed after multiple fallback attempts: %w", lastErr)
+	}
+	
+	return nil, fmt.Errorf("AI service is currently unavailable, please try again later")
+}
+
+func (h *ReceiptHandler) callGeminiTextWithModel(ocrText string, categories []*models.Category, geminiModel string) (map[string]any, error) {
+	// Build id:name list for the prompt
+	var categoryLines strings.Builder
+	fallbackID := ""
+	for _, c := range categories {
+		categoryLines.WriteString(fmt.Sprintf("- %s (%s)\n", c.ID.String(), c.Name))
+		if c.Name == "Lainnya" && fallbackID == "" {
+			fallbackID = c.ID.String()
+		}
+	}
+
+	prompt := fmt.Sprintf(`You are a high-precision receipt parsing engine. Analyze the following OCR text and return ONLY a JSON object.
+
+OCR TEXT:
+"""
+%s
+"""
+
+Structure:
+{
+  "amount": <number: actual total paid for items>,
+  "currency": "IDR",
+  "date": "YYYY-MM-DD",
+  "merchant": "<string: brand name from top of receipt>",
+  "category_id": "<string: MUST be one of the UUIDs listed below>",
+  "items": [{"name": string, "price": number}],
+  "confidence": <number: 0-100>
+}
+
+Available categories — format is: UUID (Name). Return only the UUID in category_id.
+%s
+Category Selection Logic:
+- Choose "Makanan & Minuman" for food, drinks, restaurants, cafes.
+- Choose "Transportasi" for fuel, parking, rideshare, toll.
+- Choose "Belanja" for clothes, electronics, department stores, supermarkets.
+- Choose "Hiburan" for movies, games, events.
+- Choose "Kesehatan" for pharmacy, clinic, hospital.
+- Choose "Pendidikan" for books, courses, school supplies.
+- Choose "Tagihan & Utilitas" for electricity, water, internet, phone bills.
+- Default to "Lainnya" (UUID: %s) if nothing matches.
+
+Merchant Extraction Rules:
+- The merchant is usually at the VERY TOP.
+- Clean the name: Remove addresses, phone numbers, and slogans.`, ocrText, categoryLines.String(), fallbackID)
+
+	requestBody := GeminiRequest{
+		Contents: []GeminiContent{
+			{
+				Parts: []GeminiPart{
+					{Text: prompt},
+				},
+			},
+		},
+		GenerationConfig: &GeminiGenerationConfig{
+			ResponseMimeType: "application/json",
+			Temperature:      0.1,
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", geminiModel, h.geminiAPIKey)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Gemini API (text-mode): %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Gemini Text API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var geminiResp GeminiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from Gemini API (text-mode)")
+	}
+
+	responseText := geminiResp.Candidates[0].Content.Parts[0].Text
+	var result map[string]any
+	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse receipt data (text-mode): %w", err)
+	}
+
+	return result, nil
 }
 
 func (h *ReceiptHandler) callGeminiVisionWithModel(imageData []byte, categories []*models.Category, geminiModel string) (map[string]any, error) {
