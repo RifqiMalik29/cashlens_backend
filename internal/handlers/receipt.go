@@ -23,16 +23,18 @@ import (
 type ReceiptHandler struct {
 	geminiAPIKey   string
 	geminiModel    string
+	fallbackModels []string
 	quotaService   service.QuotaService
 	categoryRepo   repository.CategoryRepository
 }
 
 func NewReceiptHandler(geminiAPIKey, geminiModel string, quotaService service.QuotaService, categoryRepo repository.CategoryRepository) *ReceiptHandler {
 	return &ReceiptHandler{
-		geminiAPIKey: geminiAPIKey,
-		geminiModel:  geminiModel,
-		quotaService: quotaService,
-		categoryRepo: categoryRepo,
+		geminiAPIKey:   geminiAPIKey,
+		geminiModel:    geminiModel,
+		fallbackModels: []string{"gemini-2.5-flash", "gemini-2.0-flash"},
+		quotaService:   quotaService,
+		categoryRepo:   categoryRepo,
 	}
 }
 
@@ -122,7 +124,7 @@ func (h *ReceiptHandler) ScanReceipt(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Error("Gemini API call failed", "latency_ms", geminiLatency.Milliseconds(), "error", err)
-		apperrors.WriteJSONError(w, fmt.Sprintf("Failed to scan receipt: %v", err), http.StatusInternalServerError)
+		apperrors.WriteJSONError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -196,6 +198,26 @@ type GeminiResponse struct {
 }
 
 func (h *ReceiptHandler) callGeminiVision(imageData []byte, categories []*models.Category) (map[string]any, error) {
+	allModels := append([]string{h.geminiModel}, h.fallbackModels...)
+	for _, model := range allModels {
+		var lastErr error
+		for attempt := range 3 {
+			result, err := h.callGeminiVisionWithModel(imageData, categories, model)
+			if err == nil {
+				return result, nil
+			}
+			lastErr = err
+			if !strings.Contains(err.Error(), "status 503") {
+				return nil, err
+			}
+			time.Sleep(time.Duration(1<<attempt) * time.Second) // 1s, 2s, 4s
+		}
+		_ = lastErr
+	}
+	return nil, fmt.Errorf("AI service is currently unavailable due to high demand, please try again in a moment")
+}
+
+func (h *ReceiptHandler) callGeminiVisionWithModel(imageData []byte, categories []*models.Category, geminiModel string) (map[string]any, error) {
 	// Encode image to base64
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
@@ -273,7 +295,7 @@ Anti-Hallucination Rules:
 	}
 
 	// Call Gemini API
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", h.geminiModel, h.geminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", geminiModel, h.geminiAPIKey)
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
