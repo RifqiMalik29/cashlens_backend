@@ -29,7 +29,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       # Secrets from Secret Manager
-      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,XENDIT_SECRET_KEY=XENDIT_SECRET_KEY:latest,XENDIT_WEBHOOK_TOKEN=XENDIT_WEBHOOK_TOKEN:latest'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,XENDIT_SECRET_KEY=XENDIT_SECRET_KEY:latest,XENDIT_WEBHOOK_TOKEN=XENDIT_WEBHOOK_TOKEN:latest,SENTRY_DSN=SENTRY_DSN:latest'
       - '--set-env-vars=ENVIRONMENT=production,LOG_FORMAT=json'
 
 images:

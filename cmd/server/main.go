@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 
+	"github.com/getsentry/sentry-go"
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/database"
 	"github.com/rifqimalik/cashlens-backend/internal/handlers"
@@ -41,6 +43,22 @@ func main() {
 	if err != nil {
 		log.Error("Failed to load config", "error", err)
 		os.Exit(1)
+	}
+
+	// Initialize Sentry
+	if cfg.Monitoring.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.Monitoring.SentryDSN,
+			Environment:      cfg.Server.Environment,
+			AttachStacktrace: true,
+			EnableTracing:    true,
+			TracesSampleRate: 1.0,
+		}); err != nil {
+			log.Error("Sentry initialization failed", "error", err)
+		} else {
+			log.Info("Sentry initialized successfully")
+			defer sentry.Flush(2 * time.Second)
+		}
 	}
 
 	// Setup context
@@ -221,6 +239,15 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
+
+	// Sentry middleware (must be after Recoverer if we want both to work)
+	if cfg.Monitoring.SentryDSN != "" {
+		sentryHandler := sentryhttp.New(sentryhttp.Options{
+			Repanic: true,
+		})
+		r.Use(sentryHandler.Handle)
+	}
+
 	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
 		AllowedOrigins: []string{"*"}, // Add your production domains here
 		Environment:    cfg.Server.Environment,

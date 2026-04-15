@@ -18,6 +18,11 @@ type Config struct {
 	Telegram   Telegram
 	Payment    Payment
 	Mail       MailConfig
+	Monitoring Monitoring
+}
+
+type Monitoring struct {
+	SentryDSN string
 }
 
 type MailConfig struct {
@@ -113,6 +118,9 @@ func Load() (*Config, error) {
 			From:     getEnv("SMTP_FROM", "noreply@cashlens.com"),
 			BaseURL:  getEnv("BASE_URL", "http://localhost:8080"),
 			MobileDeepLink: getEnv("MOBILE_DEEPLINK", "cashlens://auth/confirm"),
+		},
+		Monitoring: Monitoring{
+			SentryDSN: os.Getenv("SENTRY_DSN"),
 		},
 	}
 
