@@ -1,4 +1,4 @@
-.PHONY: run build test migrate-up migrate-down migrate-create db-setup
+.PHONY: run build test migrate-up migrate-down migrate-create db-setup check-quality pre-commit check-ip
 
 # Use absolute path for goose since it's not in the shell's PATH
 GOOSE := $(shell go env GOPATH)/bin/goose
@@ -7,12 +7,27 @@ run:
 	go run cmd/server/main.go
 
 build:
-	go build -o bin/server cmd/server/main.go
+	go build -o bin/server ./cmd/server
 
 test:
-	go test -v ./...
+	go test -v -race ./...
+
+# Quality checks
+check-quality:
+	@echo "🔍 Running code quality checks..."
+	@go mod tidy
+	@echo "✅ go mod tidy complete"
+	@go fmt ./...
+	@echo "✅ go fmt complete"
+	@go vet ./...
+	@echo "✅ go vet complete"
+
+# Pre-commit target (Run this before you push!)
+pre-commit: check-quality test
+	@echo "🚀 All checks passed! Ready to commit."
 
 migrate-up:
+
 	@export $$(grep -v '^#' .env | xargs) && $(GOOSE) -dir migrations postgres "$${DATABASE_URL}" up
 
 migrate-down:
@@ -29,8 +44,12 @@ db-setup:
 	@make migrate-up
 	@echo "Database setup complete!"
 
-run-postgressql:
-	brew services start postgresql@16
-
 run-postgres:
 	psql postgres
+
+# Find local IP address for mobile team
+check-ip:
+	@echo "📍 Local network IP addresses:"
+	@ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $$2}'
+	@echo "-----------------------------------"
+	@echo "Use one of these in your mobile app .env or app.config.js"

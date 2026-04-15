@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
@@ -214,5 +215,10 @@ func generateSecureToken() (string, error) {
 
 // generateTokenWithExpiry creates a JWT token with custom expiry
 func generateTokenWithExpiry(userID uuid.UUID, secret string, expiration time.Duration) (string, error) {
-	return generateToken(userID, secret, expiration)
+	claims := jwt.MapClaims{
+		"user_id": userID.String(),
+		"exp":     time.Now().Add(expiration).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
 }

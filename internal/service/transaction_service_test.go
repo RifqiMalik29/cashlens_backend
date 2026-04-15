@@ -14,7 +14,7 @@ import (
 type MockTransactionRepository struct {
 	CreateFunc          func(ctx context.Context, tx *models.Transaction) error
 	GetByIDFunc         func(ctx context.Context, id uuid.UUID) (*models.Transaction, error)
-	ListByUserIDFunc    func(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error)
+	ListByUserIDFunc    func(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, int, error)
 	ListByDateRangeFunc func(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) ([]*models.TransactionWithCategory, error)
 	UpdateFunc          func(ctx context.Context, tx *models.Transaction) error
 	DeleteFunc          func(ctx context.Context, id uuid.UUID) error
@@ -28,7 +28,7 @@ func (m *MockTransactionRepository) GetByID(ctx context.Context, id uuid.UUID) (
 	return m.GetByIDFunc(ctx, id)
 }
 
-func (m *MockTransactionRepository) ListByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error) {
+func (m *MockTransactionRepository) ListByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, int, error) {
 	return m.ListByUserIDFunc(ctx, userID, limit, offset)
 }
 
@@ -47,8 +47,8 @@ func (m *MockTransactionRepository) Delete(ctx context.Context, id uuid.UUID) er
 // Mock Quota Service
 type MockQuotaService struct {
 	CheckAndIncrementTransactionQuotaFunc func(ctx context.Context, userID uuid.UUID) error
-	CheckAndIncrementScanQuotaFunc       func(ctx context.Context, userID uuid.UUID) error
-	GetCurrentUsageFunc                  func(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error)
+	CheckAndIncrementScanQuotaFunc        func(ctx context.Context, userID uuid.UUID) error
+	GetCurrentUsageFunc                   func(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error)
 }
 
 func (m *MockQuotaService) CheckAndIncrementTransactionQuota(ctx context.Context, userID uuid.UUID) error {

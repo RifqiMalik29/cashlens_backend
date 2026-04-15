@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,10 +15,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ErrEmailNotConfirmed is returned when a user tries to login without confirming their email.
+// It carries the email so the handler can include it in the response.
+type ErrEmailNotConfirmed struct {
+	Email string
+}
+
+func (e *ErrEmailNotConfirmed) Error() string {
+	return "EMAIL_NOT_CONFIRMED"
+}
+
 type AuthService interface {
 	Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error)
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
-	ConfirmEmail(ctx context.Context, token string) error
+	ConfirmEmail(ctx context.Context, email, otp string) error
 	ResendConfirmation(ctx context.Context, email string) error
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
@@ -27,6 +36,7 @@ type AuthService interface {
 	UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error
 	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
 	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
+	DeleteAccount(ctx context.Context, userID uuid.UUID) error
 }
 
 type authService struct {
@@ -57,52 +67,52 @@ func NewAuthService(
 }
 
 func (s *authService) Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error) {
-	// Check if email already exists
-	user, err := s.userRepo.GetByEmail(ctx, req.Email)
-	if user != nil && err == nil {
-		return nil, fmt.Errorf("Email is already registered")
+	// Check if user exists
+	_, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err == nil {
+		return nil, fmt.Errorf("email already registered")
 	}
 
-	// Hash password
-	p, err := hashPassword(req.Password)
+	hashedPassword, err := hashPassword(req.Password)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to hash password: %w", err)
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Default language to "id" if not provided
 	lang := req.Language
 	if lang == "" {
 		lang = "id"
 	}
 
-	// Generate confirmation token
-	token, err := generateEmailConfirmationToken(32)
+	// Generate 6-digit OTP
+	token, err := generateOTP()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate confirmation token: %w", err)
+		return nil, fmt.Errorf("failed to generate OTP: %w", err)
 	}
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().Add(10 * time.Minute)
 
 	// Create user
-	user = &models.User{
+	user := &models.User{
 		ID:                    uuid.New(),
 		Email:                 req.Email,
-		PasswordHash:          p,
+		PasswordHash:          hashedPassword,
 		Name:                  &req.Name,
 		Language:              lang,
+		SubscriptionTier:      "free",
 		IsConfirmed:           false,
 		ConfirmationToken:     &token,
 		ConfirmationExpiresAt: &expiresAt,
 		CreatedAt:             time.Now(),
 		UpdatedAt:             time.Now(),
 	}
+
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
-		return nil, fmt.Errorf("Register failed: %w", err)
+		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// Seed default categories for new user (non-fatal: registration still succeeds)
+	// Seed default categories
 	if err := s.categorySeedingService.SeedDefaultCategories(ctx, user.ID); err != nil {
-		slog.Error("Failed to seed default categories for new user", "user_id", user.ID, "error", err)
+		slog.Error("Failed to seed categories for new user", "user_id", user.ID, "error", err)
 	}
 
 	// Send confirmation email asynchronously
@@ -112,39 +122,45 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		}
 	}()
 
+	// Generate JWT
+	accessToken, err := s.generateToken(user.ID, s.jwtExpiration, s.jwtSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
 	return &models.AuthResponse{
-		User: *user,
+		AccessToken: accessToken,
+		User:        *user,
 	}, nil
 }
 
 func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error) {
-	res, err := s.userRepo.GetByEmail(ctx, req.Email)
+	user, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
-		// Return generic error to prevent user enumeration
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
-	// Verify password
-	status := checkPasswordHash(req.Password, res.PasswordHash)
-	if !status {
-		// Return same generic error for consistency
+	if !checkPasswordHash(req.Password, user.PasswordHash) {
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
 	// Check if email is confirmed
-	if !res.IsConfirmed {
-		return nil, fmt.Errorf("please confirm your email before logging in")
+	if !user.IsConfirmed {
+		if err := s.sendConfirmationOTP(ctx, user); err != nil {
+			slog.Error("Failed to resend OTP on login", "email", user.Email, "error", err)
+		}
+		return nil, &ErrEmailNotConfirmed{Email: user.Email}
 	}
 
-	// Generate JWT token
-	token, err := generateToken(res.ID, s.jwtSecret, s.jwtExpiration)
+	// Generate JWT
+	token, err := s.generateToken(user.ID, s.jwtExpiration, s.jwtSecret)
 	if err != nil {
-		return nil, fmt.Errorf("Token failed to produced: %w", err)
+		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	return &models.AuthResponse{
 		AccessToken: token,
-		User:        *res,
+		User:        *user,
 	}, nil
 }
 
@@ -156,25 +172,25 @@ func (s *authService) ValidateToken(tokenString string) (*uuid.UUID, error) {
 		return []byte(s.jwtSecret), nil
 	})
 
-	if err != nil || !token.Valid {
-		return nil, fmt.Errorf("invalid token: %w", err)
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
-	}
-	userIDStr, ok := claims["user_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("user_id not found in token")
-	}
-
-	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user_id in token: %w", err)
+		return nil, err
 	}
 
-	return &userID, nil
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid token claims")
+		}
+
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user id in token")
+		}
+
+		return &userID, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
 }
 
 func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error) {
@@ -197,10 +213,13 @@ func (s *authService) UpdatePushToken(ctx context.Context, userID uuid.UUID, tok
 func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
 	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
 	if err != nil {
-		return map[string]any{"is_linked": false}, nil
+		return map[string]any{
+			"is_linked": false,
+		}, nil
 	}
+
 	return map[string]any{
-		"is_linked": link.IsActive,
+		"is_linked": true,
 		"chat_id":   link.ChatID,
 	}, nil
 }
@@ -213,14 +232,27 @@ func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) erro
 	return s.chatRepo.Delete(ctx, link.ID)
 }
 
-func (s *authService) ConfirmEmail(ctx context.Context, token string) error {
-	user, err := s.userRepo.GetByConfirmationToken(ctx, token)
+func (s *authService) DeleteAccount(ctx context.Context, userID uuid.UUID) error {
+	slog.Warn("Deleting account and all associated data", "user_id", userID.String())
+	return s.userRepo.Delete(ctx, userID)
+}
+
+func (s *authService) ConfirmEmail(ctx context.Context, email, otp string) error {
+	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("invalid or expired confirmation token")
+		return fmt.Errorf("user not found")
+	}
+
+	if user.IsConfirmed {
+		return fmt.Errorf("email is already confirmed")
+	}
+
+	if user.ConfirmationToken == nil || *user.ConfirmationToken != otp {
+		return fmt.Errorf("invalid verification code")
 	}
 
 	if user.ConfirmationExpiresAt != nil && time.Now().After(*user.ConfirmationExpiresAt) {
-		return fmt.Errorf("confirmation token has expired")
+		return fmt.Errorf("verification code has expired")
 	}
 
 	return s.userRepo.UpdateConfirmationStatus(ctx, user.ID, true)
@@ -236,23 +268,26 @@ func (s *authService) ResendConfirmation(ctx context.Context, email string) erro
 		return fmt.Errorf("email is already confirmed")
 	}
 
-	// Generate new token
-	token, err := generateEmailConfirmationToken(32)
-	if err != nil {
-		return fmt.Errorf("failed to generate confirmation token: %w", err)
-	}
-	expiresAt := time.Now().Add(24 * time.Hour)
+	return s.sendConfirmationOTP(ctx, user)
+}
 
-	// Update user with new token
-	err = s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt)
+// sendConfirmationOTP generates a new OTP, persists it, and dispatches the confirmation email.
+// It returns an error if OTP generation or DB persistence fails.
+func (s *authService) sendConfirmationOTP(ctx context.Context, user *models.User) error {
+	token, err := generateOTP()
 	if err != nil {
-		return fmt.Errorf("failed to update confirmation token: %w", err)
+		return fmt.Errorf("failed to generate verification code: %w", err)
+	}
+	expiresAt := time.Now().Add(10 * time.Minute)
+
+	if err := s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt); err != nil {
+		return fmt.Errorf("failed to update verification code: %w", err)
 	}
 
-	// Send confirmation email asynchronously
+	email := user.Email
 	go func() {
-		if err := s.mailer.SendConfirmationEmail(user.Email, token); err != nil {
-			slog.Error("Failed to send confirmation email", "email", user.Email, "error", err)
+		if err := s.mailer.SendConfirmationEmail(email, token); err != nil {
+			slog.Error("Failed to send confirmation email", "email", email, "error", err)
 		}
 	}()
 
@@ -260,16 +295,18 @@ func (s *authService) ResendConfirmation(ctx context.Context, email string) erro
 }
 
 // Helper methods
-func generateEmailConfirmationToken(length int) (string, error) {
-	b := make([]byte, length)
+func generateOTP() (string, error) {
+	b := make([]byte, 3)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+	// Generate a 6-digit number (000000-999999)
+	otp := fmt.Sprintf("%06d", (int(b[0])<<16|int(b[1])<<8|int(b[2]))%1000000)
+	return otp, nil
 }
 
 func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	return string(bytes), err
 }
 
@@ -278,7 +315,7 @@ func checkPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func generateToken(userID uuid.UUID, secret string, expiration time.Duration) (string, error) {
+func (s *authService) generateToken(userID uuid.UUID, expiration time.Duration, secret string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID.String(),
 		"exp":     time.Now().Add(expiration).Unix(),

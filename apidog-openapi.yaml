@@ -8,8 +8,8 @@ info:
 servers:
   - url: http://localhost:8080
     description: Development server
-  - url: https://your-domain.com
-    description: Production server
+  - url: https://cashlens-backend-552315397645.us-central1.run.app
+    description: Production server (Google Cloud Run)
 
 components:
   securitySchemes:
@@ -338,10 +338,9 @@ components:
           type: number
           format: double
           example: 50000
-        type:
+        currency:
           type: string
-          enum: [expense, income]
-          example: "expense"
+          example: "IDR"
         description:
           type: string
           example: "Lunch at restaurant"
@@ -370,6 +369,10 @@ components:
           type: number
           format: double
           example: 50000
+        currency:
+          type: string
+          example: "IDR"
+          default: "IDR"
         type:
           type: string
           enum: [expense, income]
@@ -392,6 +395,9 @@ components:
           type: number
           format: double
           example: 75000
+        currency:
+          type: string
+          example: "IDR"
         description:
           type: string
           example: "Updated description"
@@ -496,6 +502,9 @@ components:
         fields:
           type: object
           additionalProperties: true
+        currency:
+          type: string
+          example: "IDR"
         created_at:
           type: string
           format: date-time
@@ -512,6 +521,9 @@ components:
           type: string
           enum: [telegram, receipt_scan, manual]
           example: "manual"
+        currency:
+          type: string
+          example: "IDR"
         fields:
           type: object
           additionalProperties: true
@@ -521,13 +533,27 @@ components:
 
     ConfirmDraftRequest:
       type: object
+      required:
+        - category_id
+        - amount
+        - transaction_date
       properties:
         category_id:
           type: string
           format: uuid
+        amount:
+          type: number
+          example: 50000
+        currency:
+          type: string
+          example: "IDR"
         description:
           type: string
           example: "Confirmed transaction"
+        transaction_date:
+          type: string
+          format: date-time
+          example: "2026-04-12T10:30:00Z"
 
     HealthResponse:
       type: object
@@ -651,6 +677,27 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Invalid email or password"
+        '403':
+          description: Email not confirmed — OTP automatically resent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requires_confirmation:
+                    type: boolean
+                    example: true
+                  email:
+                    type: string
+                    format: email
+                    example: "user@example.com"
+                  message:
+                    type: string
+                    example: "Your email is not confirmed. A new verification code has been sent to your email."
+              example:
+                requires_confirmation: true
+                email: "user@example.com"
+                message: "Your email is not confirmed. A new verification code has been sent to your email."
 
   /api/v1/auth/refresh:
     post:
@@ -693,6 +740,72 @@ paths:
                   value:
                     error: "token has been revoked"
 
+  /api/v1/auth/confirm:
+    post:
+      summary: Confirm email with OTP
+      description: Verify user's email address using the 6-digit code sent to their email
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  example: "123456"
+      responses:
+        '200':
+          description: Email confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Email confirmed successfully. You can now log in."
+        '400':
+          description: Invalid or expired code
+
+  /api/v1/auth/resend-confirmation:
+    post:
+      summary: Resend confirmation OTP
+      description: Send a new 6-digit verification code to the user's email
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Code resent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Confirmation email resent successfully."
+        '400':
+          description: User not found or already confirmed
+
   /api/v1/auth/me:
     get:
       summary: Get current user
@@ -729,6 +842,24 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Unauthorized"
+    delete:
+      summary: Delete my account
+      description: Permanently delete the authenticated user's account and all associated data. This action cannot be undone.
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Account and all associated data have been permanently deleted."
+        '401':
+          description: Unauthorized
 
   /api/v1/auth/telegram/status:
     get:
@@ -927,9 +1058,16 @@ paths:
   /api/v1/webhooks/payment:
     post:
       summary: Payment webhook
-      description: Callback for Xendit payment notifications
+      description: Callback for Xendit payment notifications. Requires x-callback-token header for verification.
       tags:
         - Webhooks
+      parameters:
+        - name: x-callback-token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Token used to verify the webhook request source.
       responses:
         '200':
           description: Webhook processed
@@ -945,6 +1083,8 @@ paths:
               example:
                 status: "ok"
                 message: "webhook processed"
+        '401':
+          description: Invalid webhook signature
 
   /api/v1/categories:
     post:
@@ -1071,9 +1211,16 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
                   message:
                     type: string
               example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  name: "Food & Restaurants"
+                  type: "expense"
+                  icon: "utensils"
                 message: "Category updated successfully"
     delete:
       summary: Delete category
@@ -1138,7 +1285,7 @@ paths:
                   updated_at: "2026-04-12T12:35:00Z"
     get:
       summary: List transactions
-      description: Get all transactions for the authenticated user
+      description: Get all transactions for the authenticated user with pagination support.
       tags:
         - Transactions
       security:
@@ -1165,18 +1312,35 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Transaction'
+                    type: object
+                    properties:
+                      transactions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+                      total:
+                        type: integer
+                        example: 100
+                      limit:
+                        type: integer
+                        example: 20
+                      offset:
+                        type: integer
+                        example: 0
               example:
                 data:
-                  - id: "660e8400-e29b-41d4-a716-446655440001"
-                    category_id: "550e8400-e29b-41d4-a716-446655440000"
-                    amount: 50000
-                    type: "expense"
-                    description: "Lunch at restaurant"
-                    date: "2026-04-12T12:30:00Z"
-                    created_at: "2026-04-12T12:35:00Z"
+                  transactions:
+                    - id: "660e8400-e29b-41d4-a716-446655440001"
+                      category_id: "550e8400-e29b-41d4-a716-446655440000"
+                      amount: 50000
+                      currency: "IDR"
+                      type: "expense"
+                      description: "Lunch at restaurant"
+                      date: "2026-04-12T12:30:00Z"
+                      created_at: "2026-04-12T12:35:00Z"
+                  total: 1
+                  limit: 20
+                  offset: 0
 
   /api/v1/transactions/date-range:
     get:
@@ -1280,9 +1444,15 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
                   message:
                     type: string
               example:
+                data:
+                  id: "660e8400-e29b-41d4-a716-446655440001"
+                  amount: 75000
+                  description: "Updated lunch expense"
                 message: "Transaction updated successfully"
     delete:
       summary: Delete transaction
@@ -1432,9 +1602,15 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Budget'
                   message:
                     type: string
               example:
+                data:
+                  id: "770e8400-e29b-41d4-a716-446655440000"
+                  amount: 1500000
+                  period: "monthly"
                 message: "Budget updated successfully"
     delete:
       summary: Delete budget

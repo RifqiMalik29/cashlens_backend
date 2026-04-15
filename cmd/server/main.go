@@ -12,16 +12,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 
+	"github.com/getsentry/sentry-go"
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/database"
 	"github.com/rifqimalik/cashlens-backend/internal/handlers"
-	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
+	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 )
 
 // getEnv returns environment variable or default value
@@ -41,6 +43,22 @@ func main() {
 	if err != nil {
 		log.Error("Failed to load config", "error", err)
 		os.Exit(1)
+	}
+
+	// Initialize Sentry
+	if cfg.Monitoring.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.Monitoring.SentryDSN,
+			Environment:      cfg.Server.Environment,
+			AttachStacktrace: true,
+			EnableTracing:    true,
+			TracesSampleRate: 1.0,
+		}); err != nil {
+			log.Error("Sentry initialization failed", "error", err)
+		} else {
+			log.Info("Sentry initialized successfully")
+			defer sentry.Flush(2 * time.Second)
+		}
 	}
 
 	// Setup context
@@ -91,7 +109,7 @@ func main() {
 	)
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
-	
+
 	mailerService := mailer.NewMailer(cfg.Mail)
 	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -221,17 +239,26 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(custommiddleware.StructuredLogger)
 	r.Use(middleware.Recoverer)
+
+	// Sentry middleware (must be after Recoverer if we want both to work)
+	if cfg.Monitoring.SentryDSN != "" {
+		sentryHandler := sentryhttp.New(sentryhttp.Options{
+			Repanic: true,
+		})
+		r.Use(sentryHandler.Handle)
+	}
+
 	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
-		AllowedOrigins: []string{"*"}, // Add your production domains here
+		AllowedOrigins: cfg.CORS.AllowedOrigins,
 		Environment:    cfg.Server.Environment,
 	}))
 	r.Use(custommiddleware.SecurityHeaders(custommiddleware.SecurityHeadersConfig{
 		Environment: cfg.Server.Environment,
 	}))
 
-	// Warn if production CORS is not configured
-	if cfg.Server.Environment == "production" && len([]string{}) == 0 {
-		log.Warn("WARNING: Production CORS allowed origins is empty — all browser requests will be 403'd. Update AllowedOrigins in cmd/server/main.go")
+	// Warn if production CORS is wide open
+	if cfg.Server.Environment == "production" && (len(cfg.CORS.AllowedOrigins) == 0 || cfg.CORS.AllowedOrigins[0] == "*") {
+		log.Warn("WARNING: Production CORS is wide open (*) — restrict this in production via ALLOWED_ORIGINS env var")
 	}
 
 	// Health check (public, no rate limiting)
@@ -246,7 +273,7 @@ func main() {
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/refresh", authHandler.Refresh)
-			r.Get("/auth/confirm", authHandler.ConfirmEmail)
+			r.Post("/auth/confirm", authHandler.ConfirmEmail)
 			r.Post("/auth/resend-confirmation", authHandler.ResendConfirmation)
 		})
 
@@ -264,11 +291,19 @@ func main() {
 			r.Patch("/auth/language", authHandler.UpdateLanguage)
 			r.Patch("/auth/push-token", authHandler.UpdatePushToken)
 			r.Post("/auth/logout", authHandler.Logout)
+			r.Delete("/auth/me", authHandler.DeleteMe)
 
 			// Subscription
 			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
 			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
 			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
+
+			// Receipt Scanning (stricter rate limit + 10MB body for image uploads)
+			r.Group(func(r chi.Router) {
+				r.Use(httprate.LimitByIP(cfg.RateLimit.ScannerRequests, cfg.RateLimit.ScannerWindow))
+				r.Use(custommiddleware.MaxBodyLimit(10 << 20))
+				r.Post("/receipts/scan", receiptHandler.ScanReceipt)
+			})
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
@@ -298,13 +333,6 @@ func main() {
 			r.Get("/drafts/{id}", draftHandler.Get)
 			r.Post("/drafts/{id}/confirm", draftHandler.Confirm)
 			r.Delete("/drafts/{id}", draftHandler.Delete)
-		})
-
-		// Receipt Scanner (separate group with higher body limit for image uploads)
-		r.Group(func(r chi.Router) {
-			r.Use(custommiddleware.Auth(authService))
-			r.Use(custommiddleware.MaxBodyLimit(10 << 20)) // 10MB for image uploads
-			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
 		})
 
 		// Webhook routes (rate-limited; full signature verification required before enabling)

@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 )
@@ -62,6 +64,9 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("user not found")
+		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	return user, nil
@@ -80,6 +85,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("user not found")
+		}
 		return nil, fmt.Errorf("failed to get user by email: %w", err)
 	}
 	return user, nil
@@ -160,6 +168,9 @@ func (r *userRepository) GetByConfirmationToken(ctx context.Context, token strin
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("user not found")
+		}
 		return nil, fmt.Errorf("failed to get user by token: %w", err)
 	}
 	return user, nil

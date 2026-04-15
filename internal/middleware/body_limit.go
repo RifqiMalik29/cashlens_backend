@@ -14,7 +14,7 @@ func MaxBodyLimit(bytes int64) func(http.Handler) http.Handler {
 				apperrors.WriteJSONError(w, "Request body too large", http.StatusRequestEntityTooLarge)
 				return
 			}
-			
+
 			r.Body = http.MaxBytesReader(w, r.Body, bytes)
 			next.ServeHTTP(w, r)
 		})

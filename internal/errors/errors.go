@@ -63,12 +63,12 @@ type ErrorResponse struct {
 func WriteJSONError(w http.ResponseWriter, message string, statusCode int, details ...map[string]string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	response := ErrorResponse{Error: message}
 	if len(details) > 0 {
 		response.Details = details[0]
 	}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 

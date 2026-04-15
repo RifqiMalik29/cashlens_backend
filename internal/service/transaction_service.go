@@ -14,9 +14,9 @@ import (
 type TransactionService interface {
 	Create(ctx context.Context, userID uuid.UUID, req models.CreateTransactionRequest) (*models.Transaction, error)
 	Get(ctx context.Context, id, userID uuid.UUID) (*models.Transaction, error)
-	List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error)
+	List(ctx context.Context, userID uuid.UUID, limit, offset int) (*models.PaginatedTransactions, error)
 	ListByDateRange(ctx context.Context, userID uuid.UUID, start, end time.Time) ([]*models.TransactionWithCategory, error)
-	Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) error
+	Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) (*models.Transaction, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 }
 
@@ -46,11 +46,17 @@ func (s *transactionService) Create(ctx context.Context, userID uuid.UUID, req m
 		return nil, err
 	}
 
+	currency := req.Currency
+	if currency == "" {
+		currency = "IDR"
+	}
+
 	transaction := &models.Transaction{
 		ID:              uuid.New(),
 		UserID:          userID,
 		CategoryID:      req.CategoryID,
 		Amount:          req.Amount,
+		Currency:        currency,
 		Description:     &req.Description,
 		TransactionDate: req.TransactionDate,
 		CreatedAt:       time.Now(),
@@ -78,7 +84,7 @@ func (s *transactionService) Get(ctx context.Context, id, userID uuid.UUID) (*mo
 	return tx, nil
 }
 
-func (s *transactionService) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.TransactionWithCategory, error) {
+func (s *transactionService) List(ctx context.Context, userID uuid.UUID, limit, offset int) (*models.PaginatedTransactions, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -86,12 +92,17 @@ func (s *transactionService) List(ctx context.Context, userID uuid.UUID, limit, 
 		offset = 0
 	}
 
-	transactions, err := s.transactionRepo.ListByUserID(ctx, userID, limit, offset)
+	transactions, total, err := s.transactionRepo.ListByUserID(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list transactions: %w", err)
 	}
 
-	return transactions, nil
+	return &models.PaginatedTransactions{
+		Transactions: transactions,
+		Total:        total,
+		Limit:        limit,
+		Offset:       offset,
+	}, nil
 }
 
 func (s *transactionService) ListByDateRange(ctx context.Context, userID uuid.UUID, start, end time.Time) ([]*models.TransactionWithCategory, error) {
@@ -103,14 +114,14 @@ func (s *transactionService) ListByDateRange(ctx context.Context, userID uuid.UU
 	return transactions, nil
 }
 
-func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) error {
+func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, req models.UpdateTransactionRequest) (*models.Transaction, error) {
 	tx, err := s.transactionRepo.GetByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to get transaction: %w", err)
+		return nil, fmt.Errorf("failed to get transaction: %w", err)
 	}
 
 	if tx.UserID != userID {
-		return errors.NewForbidden("Forbidden access")
+		return nil, errors.NewForbidden("Forbidden access")
 	}
 
 	if req.CategoryID != nil {
@@ -119,6 +130,10 @@ func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, r
 
 	if req.Amount != nil && *req.Amount > 0 {
 		tx.Amount = *req.Amount
+	}
+
+	if req.Currency != nil {
+		tx.Currency = *req.Currency
 	}
 
 	if req.Description != nil {
@@ -133,10 +148,10 @@ func (s *transactionService) Update(ctx context.Context, id, userID uuid.UUID, r
 
 	err = s.transactionRepo.Update(ctx, tx)
 	if err != nil {
-		return fmt.Errorf("failed to update transaction: %w", err)
+		return nil, fmt.Errorf("failed to update transaction: %w", err)
 	}
 
-	return nil
+	return tx, nil
 }
 
 func (s *transactionService) Delete(ctx context.Context, id, userID uuid.UUID) error {

@@ -37,7 +37,7 @@ var DefaultCategories = []struct {
 	{"Pendidikan", models.CategoryTypeExpense, "📚", "#DDA0DD"},
 	{"Tagihan & Utilitas", models.CategoryTypeExpense, "💡", "#98D8C8"},
 	{"Lainnya", models.CategoryTypeExpense, "📦", "#F7DC6F"},
-	
+
 	// Income categories
 	{"Gaji", models.CategoryTypeIncome, "💰", "#2ECC71"},
 	{"Bonus", models.CategoryTypeIncome, "🎁", "#3498DB"},

@@ -3,6 +3,7 @@ module github.com/rifqimalik/cashlens-backend
 go 1.25.0
 
 require (
+	github.com/getsentry/sentry-go v0.45.1
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httprate v0.15.0
 	github.com/go-playground/validator/v10 v10.30.2

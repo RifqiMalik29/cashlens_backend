@@ -12,8 +12,8 @@ import (
 
 // XenditClient handles Xendit Invoice API calls
 type XenditClient struct {
-	secretKey string
-	baseURL   string
+	secretKey  string
+	baseURL    string
 	httpClient *http.Client
 }
 
@@ -27,14 +27,14 @@ func NewXenditClient(secretKey string) *XenditClient {
 
 // XenditInvoiceRequest represents the payload for creating an invoice
 type XenditInvoiceRequest struct {
-	ExternalInvoiceID string  `json:"external_id"`
-	Amount            float64 `json:"amount"`
-	PayerEmail        string  `json:"payer_email,omitempty"`
-	Description       string  `json:"description"`
-	InvoiceDuration   int     `json:"invoice_duration"` // seconds, default 604800 (7 days)
-	CallbackURL       string  `json:"callback_url,omitempty"`
-	SuccessRedirectURL string `json:"success_redirect_url,omitempty"`
-	FailureRedirectURL string `json:"failure_redirect_url,omitempty"`
+	ExternalInvoiceID  string  `json:"external_id"`
+	Amount             float64 `json:"amount"`
+	PayerEmail         string  `json:"payer_email,omitempty"`
+	Description        string  `json:"description"`
+	InvoiceDuration    int     `json:"invoice_duration"` // seconds, default 604800 (7 days)
+	CallbackURL        string  `json:"callback_url,omitempty"`
+	SuccessRedirectURL string  `json:"success_redirect_url,omitempty"`
+	FailureRedirectURL string  `json:"failure_redirect_url,omitempty"`
 }
 
 // XenditInvoiceResponse represents Xendit's invoice creation response

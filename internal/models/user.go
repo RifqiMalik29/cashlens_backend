@@ -7,12 +7,12 @@ import (
 )
 
 type User struct {
-	ID                 uuid.UUID  `json:"id"`
-	Email              string     `json:"email"`
-	PasswordHash       string     `json:"-"` // Never expose in JSON
-	Name               *string    `json:"name,omitempty"`
-	Language           string     `json:"language"`
-	ExpoPushToken      string     `json:"-"` // never expose in API responses
+	ID                    uuid.UUID  `json:"id"`
+	Email                 string     `json:"email"`
+	PasswordHash          string     `json:"-"` // Never expose in JSON
+	Name                  *string    `json:"name,omitempty"`
+	Language              string     `json:"language"`
+	ExpoPushToken         string     `json:"-"` // never expose in API responses
 	SubscriptionTier      string     `json:"subscription_tier"`
 	SubscriptionExpiry    *time.Time `json:"subscription_expires_at,omitempty"`
 	IsFounder             bool       `json:"is_founder"`

@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+
+	"github.com/getsentry/sentry-go"
 )
 
 // contextKey is a custom type for context keys to avoid collisions
@@ -74,6 +76,18 @@ func (l *Logger) WithRequestID(requestID string) *Logger {
 func (l *Logger) With(args ...any) *Logger {
 	return &Logger{
 		Logger: l.Logger.With(args...),
+	}
+}
+
+// ErrorE logs an error and also sends it to Sentry if initialized
+func (l *Logger) ErrorE(msg string, err error, args ...any) {
+	// Log locally
+	logArgs := append([]any{"error", err}, args...)
+	l.Logger.Error(msg, logArgs...)
+
+	// Send to Sentry
+	if err != nil {
+		sentry.CaptureException(err)
 	}
 }
 

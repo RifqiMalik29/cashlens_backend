@@ -3,12 +3,12 @@ package models
 import "github.com/google/uuid"
 
 type UserQuota struct {
-	ID                 uuid.UUID `json:"id"`
-	UserID             uuid.UUID `json:"user_id"`
-	PeriodMonth        int       `json:"period_month"`
-	PeriodYear         int       `json:"period_year"`
-	ScansUsed          int       `json:"scans_used"`
-	TransactionsUsed   int       `json:"transactions_used"`
+	ID               uuid.UUID `json:"id"`
+	UserID           uuid.UUID `json:"user_id"`
+	PeriodMonth      int       `json:"period_month"`
+	PeriodYear       int       `json:"period_year"`
+	ScansUsed        int       `json:"scans_used"`
+	TransactionsUsed int       `json:"transactions_used"`
 }
 
 type QuotaLimits struct {

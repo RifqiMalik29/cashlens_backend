@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -69,23 +70,29 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+		OTP   string `json:"otp" validate:"required,len=6"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Confirmation token is required"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
 		return
 	}
 
-	if err := h.authService.ConfirmEmail(r.Context(), token); err != nil {
+	if err := h.authService.ConfirmEmail(r.Context(), req.Email, req.OTP); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Redirect to mobile app
-	http.Redirect(w, r, h.config.Mail.MobileDeepLink, http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Email confirmed successfully. You can now log in.",
+	})
 }
 
 func (h *AuthHandler) ResendConfirmation(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +143,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	res, err := h.authService.Login(r.Context(), req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		var notConfirmed *service.ErrEmailNotConfirmed
+		if errors.As(err, &notConfirmed) {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{
+				"requires_confirmation": true,
+				"email":                 notConfirmed.Email,
+				"message":               "Your email is not confirmed. A new verification code has been sent to your email.",
+			})
+			return
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
@@ -361,3 +378,25 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *AuthHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(*uuid.UUID)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return
+	}
+
+	if err := h.authService.DeleteAccount(r.Context(), *userID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete account"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Account and all associated data have been permanently deleted.",
+	})
+}
