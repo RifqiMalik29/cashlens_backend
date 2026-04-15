@@ -180,7 +180,7 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.transactionService.Update(r.Context(), transactionID, *userID, req)
+	res, err := h.transactionService.Update(r.Context(), transactionID, *userID, req)
 	if err != nil {
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) {
@@ -194,6 +194,7 @@ func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
+		"data":    res,
 		"message": "Transaction updated successfully",
 	})
 }

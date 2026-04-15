@@ -8,8 +8,8 @@ info:
 servers:
   - url: http://localhost:8080
     description: Development server
-  - url: https://your-domain.com
-    description: Production server
+  - url: https://cashlens-backend-552315397645.us-central1.run.app
+    description: Production server (Google Cloud Run)
 
 components:
   securitySchemes:
@@ -338,10 +338,9 @@ components:
           type: number
           format: double
           example: 50000
-        type:
+        currency:
           type: string
-          enum: [expense, income]
-          example: "expense"
+          example: "IDR"
         description:
           type: string
           example: "Lunch at restaurant"
@@ -370,6 +369,10 @@ components:
           type: number
           format: double
           example: 50000
+        currency:
+          type: string
+          example: "IDR"
+          default: "IDR"
         type:
           type: string
           enum: [expense, income]
@@ -392,6 +395,9 @@ components:
           type: number
           format: double
           example: 75000
+        currency:
+          type: string
+          example: "IDR"
         description:
           type: string
           example: "Updated description"
@@ -496,6 +502,9 @@ components:
         fields:
           type: object
           additionalProperties: true
+        currency:
+          type: string
+          example: "IDR"
         created_at:
           type: string
           format: date-time
@@ -512,6 +521,9 @@ components:
           type: string
           enum: [telegram, receipt_scan, manual]
           example: "manual"
+        currency:
+          type: string
+          example: "IDR"
         fields:
           type: object
           additionalProperties: true
@@ -521,13 +533,27 @@ components:
 
     ConfirmDraftRequest:
       type: object
+      required:
+        - category_id
+        - amount
+        - transaction_date
       properties:
         category_id:
           type: string
           format: uuid
+        amount:
+          type: number
+          example: 50000
+        currency:
+          type: string
+          example: "IDR"
         description:
           type: string
           example: "Confirmed transaction"
+        transaction_date:
+          type: string
+          format: date-time
+          example: "2026-04-12T10:30:00Z"
 
     HealthResponse:
       type: object
@@ -993,9 +1019,16 @@ paths:
   /api/v1/webhooks/payment:
     post:
       summary: Payment webhook
-      description: Callback for Xendit payment notifications
+      description: Callback for Xendit payment notifications. Requires x-callback-token header for verification.
       tags:
         - Webhooks
+      parameters:
+        - name: x-callback-token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Token used to verify the webhook request source.
       responses:
         '200':
           description: Webhook processed
@@ -1011,6 +1044,8 @@ paths:
               example:
                 status: "ok"
                 message: "webhook processed"
+        '401':
+          description: Invalid webhook signature
 
   /api/v1/categories:
     post:
@@ -1211,7 +1246,7 @@ paths:
                   updated_at: "2026-04-12T12:35:00Z"
     get:
       summary: List transactions
-      description: Get all transactions for the authenticated user
+      description: Get all transactions for the authenticated user with pagination support.
       tags:
         - Transactions
       security:
@@ -1238,18 +1273,35 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Transaction'
+                    type: object
+                    properties:
+                      transactions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+                      total:
+                        type: integer
+                        example: 100
+                      limit:
+                        type: integer
+                        example: 20
+                      offset:
+                        type: integer
+                        example: 0
               example:
                 data:
-                  - id: "660e8400-e29b-41d4-a716-446655440001"
-                    category_id: "550e8400-e29b-41d4-a716-446655440000"
-                    amount: 50000
-                    type: "expense"
-                    description: "Lunch at restaurant"
-                    date: "2026-04-12T12:30:00Z"
-                    created_at: "2026-04-12T12:35:00Z"
+                  transactions:
+                    - id: "660e8400-e29b-41d4-a716-446655440001"
+                      category_id: "550e8400-e29b-41d4-a716-446655440000"
+                      amount: 50000
+                      currency: "IDR"
+                      type: "expense"
+                      description: "Lunch at restaurant"
+                      date: "2026-04-12T12:30:00Z"
+                      created_at: "2026-04-12T12:35:00Z"
+                  total: 1
+                  limit: 20
+                  offset: 0
 
   /api/v1/transactions/date-range:
     get:

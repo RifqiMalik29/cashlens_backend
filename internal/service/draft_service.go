@@ -36,11 +36,17 @@ func (s *draftService) Create(ctx context.Context, userID uuid.UUID, req models.
 		return nil, errors.NewBadRequest("Source is required")
 	}
 
+	currency := req.Currency
+	if currency == "" {
+		currency = "IDR"
+	}
+
 	draft := &models.DraftTransaction{
 		ID:              uuid.New(),
 		UserID:          userID,
 		CategoryID:      req.CategoryID,
 		Amount:          req.Amount,
+		Currency:        currency,
 		Description:     req.Description,
 		TransactionDate: req.TransactionDate,
 		Source:          req.Source,
@@ -98,11 +104,20 @@ func (s *draftService) Confirm(ctx context.Context, draftID, userID uuid.UUID, r
 		return nil, errors.NewBadRequest("Draft is already confirmed")
 	}
 
+	currency := req.Currency
+	if currency == "" {
+		currency = draft.Currency
+	}
+	if currency == "" {
+		currency = "IDR"
+	}
+
 	transaction := &models.Transaction{
 		ID:              uuid.New(),
 		UserID:          userID,
 		CategoryID:      req.CategoryID,
 		Amount:          req.Amount,
+		Currency:        currency,
 		Description:     &req.Description,
 		TransactionDate: req.TransactionDate,
 		CreatedAt:       time.Now(),
