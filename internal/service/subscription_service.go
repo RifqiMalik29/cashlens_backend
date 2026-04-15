@@ -22,11 +22,11 @@ type SubscriptionService interface {
 }
 
 type subscriptionService struct {
-	userRepo      repository.UserRepository
-	eventRepo     repository.SubscriptionEventRepository
-	invoiceRepo   repository.PendingInvoiceRepository
-	xenditClient  *xendit.XenditClient
-	webhookToken  string
+	userRepo     repository.UserRepository
+	eventRepo    repository.SubscriptionEventRepository
+	invoiceRepo  repository.PendingInvoiceRepository
+	xenditClient *xendit.XenditClient
+	webhookToken string
 }
 
 func NewSubscriptionService(

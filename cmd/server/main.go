@@ -17,13 +17,13 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/database"
 	"github.com/rifqimalik/cashlens-backend/internal/handlers"
-	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
+	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
 )
 
 // getEnv returns environment variable or default value
@@ -109,7 +109,7 @@ func main() {
 	)
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
-	
+
 	mailerService := mailer.NewMailer(cfg.Mail)
 	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration)
 	refreshTokenService := service.NewRefreshTokenService(

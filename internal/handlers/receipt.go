@@ -207,12 +207,12 @@ type GeminiResponse struct {
 
 func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, categories []*models.Category) (map[string]any, error) {
 	log := logger.GetDefault().With("component", "gemini_vision_service")
-	
+
 	// Create a unique list of models to try, starting with the primary model
 	modelSet := make(map[string]bool)
 	allModels := []string{h.geminiModel}
 	modelSet[h.geminiModel] = true
-	
+
 	for _, m := range h.fallbackModels {
 		if !modelSet[m] {
 			allModels = append(allModels, m)
@@ -226,7 +226,7 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, cate
 			if attempt > 0 || model != h.geminiModel {
 				log.Info("Retrying receipt scan with model", "model", model, "attempt", attempt+1)
 			}
-			
+
 			result, err := h.callGeminiVisionWithModel(imageData, categories, model)
 			if err == nil {
 				// If confidence is low and we have more models to try, continue to a stronger model
@@ -237,10 +237,10 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, cate
 				}
 				return result, nil
 			}
-			
+
 			lastErr = err
-			
-			// If it's a 400 (Bad Request) but NOT a 429 (Rate Limit), it's likely a prompt or image issue 
+
+			// If it's a 400 (Bad Request) but NOT a 429 (Rate Limit), it's likely a prompt or image issue
 			// that won't be fixed by retrying or switching models.
 			if strings.Contains(err.Error(), "status 400") && !strings.Contains(err.Error(), "429") {
 				break // Try next model
@@ -250,8 +250,8 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, cate
 			time.Sleep(time.Duration(1<<attempt) * time.Second)
 		}
 	}
-	
-	// Final Fallback: If vision failed but we have OCR text from the mobile app, 
+
+	// Final Fallback: If vision failed but we have OCR text from the mobile app,
 	// try one last time using ONLY the text. This is Stage 2 in the cascading strategy.
 	if ocrText != "" {
 		log.Info("Vision scanning failed, falling back to text-only parsing (Stage 2)")
@@ -262,11 +262,11 @@ func (h *ReceiptHandler) callGeminiVision(imageData []byte, ocrText string, cate
 		}
 		lastErr = err
 	}
-	
+
 	if lastErr != nil {
 		return nil, fmt.Errorf("receipt scanning failed after multiple fallback attempts: %w", lastErr)
 	}
-	
+
 	return nil, fmt.Errorf("AI service is currently unavailable, please try again later")
 }
 

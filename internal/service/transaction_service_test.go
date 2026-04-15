@@ -47,8 +47,8 @@ func (m *MockTransactionRepository) Delete(ctx context.Context, id uuid.UUID) er
 // Mock Quota Service
 type MockQuotaService struct {
 	CheckAndIncrementTransactionQuotaFunc func(ctx context.Context, userID uuid.UUID) error
-	CheckAndIncrementScanQuotaFunc       func(ctx context.Context, userID uuid.UUID) error
-	GetCurrentUsageFunc                  func(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error)
+	CheckAndIncrementScanQuotaFunc        func(ctx context.Context, userID uuid.UUID) error
+	GetCurrentUsageFunc                   func(ctx context.Context, userID uuid.UUID) (*models.UserQuota, error)
 }
 
 func (m *MockQuotaService) CheckAndIncrementTransactionQuota(ctx context.Context, userID uuid.UUID) error {

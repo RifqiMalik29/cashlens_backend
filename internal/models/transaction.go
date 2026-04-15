@@ -7,16 +7,16 @@ import (
 )
 
 type Transaction struct {
-	ID              uuid.UUID              `json:"id"`
-	UserID          uuid.UUID              `json:"user_id"`
-	CategoryID      uuid.UUID              `json:"category_id"`
-	Amount          float64                `json:"amount"`
-	Description     *string                `json:"description,omitempty"`
-	TransactionDate time.Time              `json:"transaction_date"`
-	AttachmentURL   *string                `json:"attachment_url,omitempty"`
+	ID              uuid.UUID               `json:"id"`
+	UserID          uuid.UUID               `json:"user_id"`
+	CategoryID      uuid.UUID               `json:"category_id"`
+	Amount          float64                 `json:"amount"`
+	Description     *string                 `json:"description,omitempty"`
+	TransactionDate time.Time               `json:"transaction_date"`
+	AttachmentURL   *string                 `json:"attachment_url,omitempty"`
 	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	CreatedAt       time.Time               `json:"created_at"`
+	UpdatedAt       time.Time               `json:"updated_at"`
 }
 
 type CreateTransactionRequest struct {
@@ -39,10 +39,10 @@ type TransactionWithCategory struct {
 }
 
 type TransactionSummary struct {
-	TotalIncome   float64            `json:"total_income"`
-	TotalExpense  float64            `json:"total_expense"`
-	NetBalance    float64            `json:"net_balance"`
-	ByCategory    []CategorySummary  `json:"by_category"`
+	TotalIncome  float64           `json:"total_income"`
+	TotalExpense float64           `json:"total_expense"`
+	NetBalance   float64           `json:"net_balance"`
+	ByCategory   []CategorySummary `json:"by_category"`
 }
 
 type CategorySummary struct {

@@ -21,36 +21,36 @@ import (
 )
 
 type BotService struct {
-	botToken          string
-	geminiAPIKey      string
-	geminiModel       string
-	draftSvc          service.DraftService
-	transactionSvc    service.TransactionService
-	budgetSvc         service.BudgetService
-	draftRepo         repository.DraftRepository
-	transactionRepo   repository.TransactionRepository
-	budgetRepo        repository.BudgetRepository
-	userRepo          repository.UserRepository
-	chatRepo          repository.ChatLinkRepository
-	categoryRepo      repository.CategoryRepository
-	httpClient        *http.Client
+	botToken        string
+	geminiAPIKey    string
+	geminiModel     string
+	draftSvc        service.DraftService
+	transactionSvc  service.TransactionService
+	budgetSvc       service.BudgetService
+	draftRepo       repository.DraftRepository
+	transactionRepo repository.TransactionRepository
+	budgetRepo      repository.BudgetRepository
+	userRepo        repository.UserRepository
+	chatRepo        repository.ChatLinkRepository
+	categoryRepo    repository.CategoryRepository
+	httpClient      *http.Client
 }
 
 func NewBotService(botToken string, geminiAPIKey string, geminiModel string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
 	return &BotService{
-		botToken:          botToken,
-		geminiAPIKey:      geminiAPIKey,
-		geminiModel:       geminiModel,
-		draftSvc:          draftSvc,
-		transactionSvc:    transactionSvc,
-		budgetSvc:         budgetSvc,
-		draftRepo:         draftRepo,
-		transactionRepo:   transactionRepo,
-		budgetRepo:        budgetRepo,
-		userRepo:          userRepo,
-		chatRepo:          chatRepo,
-		categoryRepo:      categoryRepo,
-		httpClient:        &http.Client{Timeout: 30 * time.Second},
+		botToken:        botToken,
+		geminiAPIKey:    geminiAPIKey,
+		geminiModel:     geminiModel,
+		draftSvc:        draftSvc,
+		transactionSvc:  transactionSvc,
+		budgetSvc:       budgetSvc,
+		draftRepo:       draftRepo,
+		transactionRepo: transactionRepo,
+		budgetRepo:      budgetRepo,
+		userRepo:        userRepo,
+		chatRepo:        chatRepo,
+		categoryRepo:    categoryRepo,
+		httpClient:      &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -242,10 +242,10 @@ func (b *BotService) handleSetCategory(chatID int64, messageID int64, shortDraft
 	}
 
 	b.answerCallbackQuery(callbackID, fmt.Sprintf("Category set to %s", categoryName))
-	
+
 	// Edit message to show Confirm/Reject buttons
 	b.editMessageText(chatID, messageID, fmt.Sprintf("✅ Category Set: %s\n\n💰 Amount: Rp %.0f\n📝 Description: %s\n📅 Date: %s\n\nTap below to confirm or reject.", categoryName, *draft.Amount, *draft.Description, draft.TransactionDate.Format("2006-01-02")))
-	
+
 	// Show Confirm/Reject buttons
 	b.showConfirmRejectButtons(chatID, draft)
 }
@@ -617,7 +617,7 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 	}
 
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", b.geminiModel, b.geminiAPIKey)
-	
+
 	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to call Gemini API: %w", err)
@@ -651,7 +651,7 @@ type ParsedMessage struct {
 func (b *BotService) smartParse(text string) ParsedMessage {
 	// Pattern: "amount description" or "amount description category"
 	// Examples: "35000 lunch", "50000 transport grab", "120000 shopping shoes"
-	
+
 	amountRegex := regexp.MustCompile(`^(\d+(?:[.,]\d+)?)\s+(.+)$`)
 	matches := amountRegex.FindStringSubmatch(strings.TrimSpace(text))
 
@@ -907,10 +907,10 @@ func (b *BotService) sendReply(chatID int64, text string) {
 
 func (b *BotService) sendReplyWithKeyboard(chatID int64, text string, keyboard *InlineKeyboardMarkup) {
 	reply := SendMessageRequest{
-		ChatID:        chatID,
-		Text:          text,
-		ParseMode:     "", // Plain text
-		ReplyMarkup:   keyboard,
+		ChatID:      chatID,
+		Text:        text,
+		ParseMode:   "", // Plain text
+		ReplyMarkup: keyboard,
 	}
 
 	jsonBody, err := json.Marshal(reply)
@@ -987,9 +987,9 @@ type Update struct {
 }
 
 type CallbackQuery struct {
-	ID      string   `json:"id"`
-	Message Message  `json:"message"`
-	Data    string   `json:"data"`
+	ID      string  `json:"id"`
+	Message Message `json:"message"`
+	Data    string  `json:"data"`
 }
 
 type Message struct {
@@ -1005,10 +1005,10 @@ type Chat struct {
 }
 
 type SendMessageRequest struct {
-	ChatID        int64                `json:"chat_id"`
-	Text          string               `json:"text"`
-	ParseMode     string               `json:"parse_mode,omitempty"`
-	ReplyMarkup   *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+	ChatID      int64                 `json:"chat_id"`
+	Text        string                `json:"text"`
+	ParseMode   string                `json:"parse_mode,omitempty"`
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }
 
 type InlineKeyboardMarkup struct {
@@ -1027,9 +1027,9 @@ type CallbackAnswerRequest struct {
 }
 
 type EditMessageRequest struct {
-	ChatID          int64                `json:"chat_id"`
-	MessageID       int64                `json:"message_id"`
-	Text            string               `json:"text"`
-	ParseMode       string               `json:"parse_mode,omitempty"`
-	ReplyMarkup     *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+	ChatID      int64                 `json:"chat_id"`
+	MessageID   int64                 `json:"message_id"`
+	Text        string                `json:"text"`
+	ParseMode   string                `json:"parse_mode,omitempty"`
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }

@@ -32,7 +32,9 @@ func (m *MockChatLinkRepository) GetByUserID(ctx context.Context, userID uuid.UU
 	return m.GetByUserIDFunc(ctx, userID, platform)
 }
 
-func (m *MockChatLinkRepository) Create(ctx context.Context, link *models.UserChatLink) error { return nil }
+func (m *MockChatLinkRepository) Create(ctx context.Context, link *models.UserChatLink) error {
+	return nil
+}
 func (m *MockChatLinkRepository) GetByChatID(ctx context.Context, chatID string, platform string) (*models.UserChatLink, error) {
 	return nil, nil
 }
@@ -52,7 +54,7 @@ func TestExpiryReminderService_RunReminders(t *testing.T) {
 
 	userID := uuid.New()
 	markSentCalled := false
-	
+
 	mockReminderRepo := &MockReminderRepository{
 		GetUsersFunc: func(ctx context.Context, days int) ([]repository.ReminderUser, error) {
 			return []repository.ReminderUser{
@@ -113,7 +115,7 @@ func TestExpiryReminderService_RunReminders_Failure(t *testing.T) {
 
 	userID := uuid.New()
 	markSentCalled := false
-	
+
 	mockReminderRepo := &MockReminderRepository{
 		GetUsersFunc: func(ctx context.Context, days int) ([]repository.ReminderUser, error) {
 			return []repository.ReminderUser{

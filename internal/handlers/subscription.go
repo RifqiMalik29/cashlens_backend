@@ -32,13 +32,13 @@ var PlanConfig = map[string]struct {
 }
 
 type SubscriptionHandler struct {
-	quotaService  service.QuotaService
-	userRepo      repository.UserRepository
-	subService    service.SubscriptionService
-	xenditClient  *xendit.XenditClient
-	webhookToken  string
-	successURL    string
-	failureURL    string
+	quotaService service.QuotaService
+	userRepo     repository.UserRepository
+	subService   service.SubscriptionService
+	xenditClient *xendit.XenditClient
+	webhookToken string
+	successURL   string
+	failureURL   string
 }
 
 func NewSubscriptionHandler(
@@ -157,10 +157,10 @@ func (h *SubscriptionHandler) CreateInvoice(w http.ResponseWriter, r *http.Reque
 
 	// Call Xendit to create invoice
 	xenditReq := xendit.XenditInvoiceRequest{
-		ExternalInvoiceID: externalInvoiceID,
-		Amount:            config.Price,
-		Description:       fmt.Sprintf("CashLens Premium %s plan", req.Plan),
-		InvoiceDuration:   604800, // 7 days in seconds
+		ExternalInvoiceID:  externalInvoiceID,
+		Amount:             config.Price,
+		Description:        fmt.Sprintf("CashLens Premium %s plan", req.Plan),
+		InvoiceDuration:    604800, // 7 days in seconds
 		SuccessRedirectURL: h.successURL + "?invoice_id=" + externalInvoiceID,
 		FailureRedirectURL: h.failureURL,
 	}

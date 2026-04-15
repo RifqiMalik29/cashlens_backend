@@ -7,16 +7,16 @@ import (
 )
 
 type RefreshToken struct {
-	ID               uuid.UUID  `json:"id"`
-	UserID           uuid.UUID  `json:"user_id"`
-	Token            string     `json:"-"` // Never expose in responses
-	ExpiresAt        time.Time  `json:"expires_at"`
-	RevokedAt        *time.Time `json:"revoked_at,omitempty"`
+	ID                uuid.UUID  `json:"id"`
+	UserID            uuid.UUID  `json:"user_id"`
+	Token             string     `json:"-"` // Never expose in responses
+	ExpiresAt         time.Time  `json:"expires_at"`
+	RevokedAt         *time.Time `json:"revoked_at,omitempty"`
 	ReplacedByTokenID *uuid.UUID `json:"replaced_by_token_id,omitempty"`
-	IPAddress        string     `json:"-"`
-	UserAgent        string     `json:"-"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	IPAddress         string     `json:"-"`
+	UserAgent         string     `json:"-"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 type RefreshTokenRequest struct {

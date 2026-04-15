@@ -64,26 +64,26 @@ func (r *refreshTokenRepository) GetByToken(ctx context.Context, token string) (
 
 func (r *refreshTokenRepository) GetByUserID(ctx context.Context, userID uuid.UUID, activeOnly bool) ([]*models.RefreshToken, error) {
 	var tokens []*models.RefreshToken
-	
+
 	query := `
 		SELECT id, user_id, token, expires_at, revoked_at, replaced_by_token_id,
 		       ip_address, user_agent, created_at, updated_at
 		FROM refresh_tokens
 		WHERE user_id = $1
 	`
-	
+
 	if activeOnly {
 		query += " AND revoked_at IS NULL AND expires_at > NOW()"
 	}
-	
+
 	query += " ORDER BY created_at DESC"
-	
+
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query refresh tokens: %w", err)
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		rt := &models.RefreshToken{}
 		err := rows.Scan(
@@ -96,7 +96,7 @@ func (r *refreshTokenRepository) GetByUserID(ctx context.Context, userID uuid.UU
 		}
 		tokens = append(tokens, rt)
 	}
-	
+
 	return tokens, nil
 }
 
