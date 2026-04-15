@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"fmt"
+	"log/slog"
 	"net/smtp"
 
 	"github.com/rifqimalik/cashlens-backend/internal/config"
@@ -57,9 +58,12 @@ func (m *smtpMailer) SendConfirmationEmail(to, token string) error {
 
 	// In development, we might want to just log it if SMTP is not configured
 	if m.config.User == "" || m.config.Password == "" {
-		fmt.Printf("DEBUG: HTML Email to %s Sent\n", to)
+		slog.Info("DEBUG: HTML Email Sent", "to", to, "otp", token)
 		return nil
 	}
+
+	// Always log OTP to terminal for development ease
+	slog.Info("📧 [MAILER] Sending OTP", "to", to, "otp", token)
 
 	header := make(map[string]string)
 	header["From"] = m.config.From
