@@ -291,6 +291,7 @@ func main() {
 			r.Patch("/auth/language", authHandler.UpdateLanguage)
 			r.Patch("/auth/push-token", authHandler.UpdatePushToken)
 			r.Post("/auth/logout", authHandler.Logout)
+			r.Delete("/auth/me", authHandler.DeleteMe)
 
 			// Subscription
 			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)

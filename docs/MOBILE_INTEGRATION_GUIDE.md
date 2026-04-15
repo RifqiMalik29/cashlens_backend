@@ -71,3 +71,5 @@ export default {
 *   **Subscription Status:** `GET /api/v1/subscription` returns tier, expiry, and detailed usage quotas.
 *   **Language Settings:** `PATCH /api/v1/auth/language` (supports `id` and `en`).
 *   **Push Notifications:** `PATCH /api/v1/auth/push-token` to register the device token.
+*   **Account Deletion (Mandatory for App Stores):**
+    *   `DELETE /api/v1/auth/me`: Permanently deletes the user account and all data. This must be accessible from within the app settings.

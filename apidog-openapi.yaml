@@ -821,6 +821,24 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Unauthorized"
+    delete:
+      summary: Delete my account
+      description: Permanently delete the authenticated user's account and all associated data. This action cannot be undone.
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Account and all associated data have been permanently deleted."
+        '401':
+          description: Unauthorized
 
   /api/v1/auth/telegram/status:
     get:

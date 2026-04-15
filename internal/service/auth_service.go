@@ -26,6 +26,7 @@ type AuthService interface {
 	UpdatePushToken(ctx context.Context, userID uuid.UUID, token string) error
 	GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error)
 	UnlinkTelegram(ctx context.Context, userID uuid.UUID) error
+	DeleteAccount(ctx context.Context, userID uuid.UUID) error
 }
 
 type authService struct {
@@ -56,19 +57,17 @@ func NewAuthService(
 }
 
 func (s *authService) Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error) {
-	// Check if email already exists
-	user, err := s.userRepo.GetByEmail(ctx, req.Email)
-	if user != nil && err == nil {
-		return nil, fmt.Errorf("Email is already registered")
+	// Check if user exists
+	_, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err == nil {
+		return nil, fmt.Errorf("email already registered")
 	}
 
-	// Hash password
-	p, err := hashPassword(req.Password)
+	hashedPassword, err := hashPassword(req.Password)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to hash password: %w", err)
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Default language to "id" if not provided
 	lang := req.Language
 	if lang == "" {
 		lang = "id"
@@ -82,26 +81,28 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 	expiresAt := time.Now().Add(10 * time.Minute)
 
 	// Create user
-	user = &models.User{
+	user := &models.User{
 		ID:                    uuid.New(),
 		Email:                 req.Email,
-		PasswordHash:          p,
+		PasswordHash:          hashedPassword,
 		Name:                  &req.Name,
 		Language:              lang,
+		SubscriptionTier:      "free",
 		IsConfirmed:           false,
 		ConfirmationToken:     &token,
 		ConfirmationExpiresAt: &expiresAt,
 		CreatedAt:             time.Now(),
 		UpdatedAt:             time.Now(),
 	}
+
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
-		return nil, fmt.Errorf("Register failed: %w", err)
+		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// Seed default categories for new user (non-fatal: registration still succeeds)
+	// Seed default categories
 	if err := s.categorySeedingService.SeedDefaultCategories(ctx, user.ID); err != nil {
-		slog.Error("Failed to seed default categories for new user", "user_id", user.ID, "error", err)
+		slog.Error("Failed to seed categories for new user", "user_id", user.ID, "error", err)
 	}
 
 	// Send confirmation email asynchronously
@@ -111,39 +112,42 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		}
 	}()
 
+	// Generate JWT
+	accessToken, err := s.generateToken(user.ID, s.jwtExpiration, s.jwtSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
 	return &models.AuthResponse{
-		User: *user,
+		AccessToken: accessToken,
+		User:        *user,
 	}, nil
 }
 
 func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error) {
-	res, err := s.userRepo.GetByEmail(ctx, req.Email)
+	user, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
-		// Return generic error to prevent user enumeration
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
-	// Verify password
-	status := checkPasswordHash(req.Password, res.PasswordHash)
-	if !status {
-		// Return same generic error for consistency
+	if !checkPasswordHash(req.Password, user.PasswordHash) {
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
 	// Check if email is confirmed
-	if !res.IsConfirmed {
-		return nil, fmt.Errorf("please confirm your email before logging in")
+	if !user.IsConfirmed {
+		return nil, fmt.Errorf("please confirm your email address before logging in")
 	}
 
-	// Generate JWT token
-	token, err := generateToken(res.ID, s.jwtSecret, s.jwtExpiration)
+	// Generate JWT
+	token, err := s.generateToken(user.ID, s.jwtExpiration, s.jwtSecret)
 	if err != nil {
-		return nil, fmt.Errorf("Token failed to produced: %w", err)
+		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	return &models.AuthResponse{
 		AccessToken: token,
-		User:        *res,
+		User:        *user,
 	}, nil
 }
 
@@ -155,25 +159,25 @@ func (s *authService) ValidateToken(tokenString string) (*uuid.UUID, error) {
 		return []byte(s.jwtSecret), nil
 	})
 
-	if err != nil || !token.Valid {
-		return nil, fmt.Errorf("invalid token: %w", err)
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
-	}
-	userIDStr, ok := claims["user_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("user_id not found in token")
-	}
-
-	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user_id in token: %w", err)
+		return nil, err
 	}
 
-	return &userID, nil
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid token claims")
+		}
+
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user id in token")
+		}
+
+		return &userID, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
 }
 
 func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error) {
@@ -196,10 +200,13 @@ func (s *authService) UpdatePushToken(ctx context.Context, userID uuid.UUID, tok
 func (s *authService) GetTelegramStatus(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
 	link, err := s.chatRepo.GetByUserID(ctx, userID, "telegram")
 	if err != nil {
-		return map[string]any{"is_linked": false}, nil
+		return map[string]any{
+			"is_linked": false,
+		}, nil
 	}
+
 	return map[string]any{
-		"is_linked": link.IsActive,
+		"is_linked": true,
 		"chat_id":   link.ChatID,
 	}, nil
 }
@@ -210,6 +217,11 @@ func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) erro
 		return fmt.Errorf("no telegram link found for user")
 	}
 	return s.chatRepo.Delete(ctx, link.ID)
+}
+
+func (s *authService) DeleteAccount(ctx context.Context, userID uuid.UUID) error {
+	slog.Warn("Deleting account and all associated data", "user_id", userID.String())
+	return s.userRepo.Delete(ctx, userID)
 }
 
 func (s *authService) ConfirmEmail(ctx context.Context, email, otp string) error {
@@ -287,7 +299,7 @@ func checkPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func generateToken(userID uuid.UUID, secret string, expiration time.Duration) (string, error) {
+func (s *authService) generateToken(userID uuid.UUID, expiration time.Duration, secret string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID.String(),
 		"exp":     time.Now().Add(expiration).Unix(),
