@@ -64,6 +64,9 @@ export default {
 ```
 
 ## 6. New Features Now Available
+*   **Email Verification (OTP):**
+    *   `POST /api/v1/auth/confirm`: Submit `{ "email": "...", "otp": "123456" }` to verify account.
+    *   `POST /api/v1/auth/resend-confirmation`: Submit `{ "email": "..." }` to get a new code.
 *   **Telegram Linking:** `GET /api/v1/auth/telegram/status` to check if the user is linked.
 *   **Subscription Status:** `GET /api/v1/subscription` returns tier, expiry, and detailed usage quotas.
 *   **Language Settings:** `PATCH /api/v1/auth/language` (supports `id` and `en`).

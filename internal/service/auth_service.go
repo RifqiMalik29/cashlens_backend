@@ -19,7 +19,7 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error)
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
-	ConfirmEmail(ctx context.Context, token string) error
+	ConfirmEmail(ctx context.Context, email, otp string) error
 	ResendConfirmation(ctx context.Context, email string) error
 	ValidateToken(tokenString string) (*uuid.UUID, error)
 	GetMe(ctx context.Context, userID uuid.UUID) (*models.User, error)
@@ -75,12 +75,12 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		lang = "id"
 	}
 
-	// Generate confirmation token
-	token, err := generateEmailConfirmationToken(32)
+	// Generate 6-digit OTP
+	token, err := generateOTP()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate confirmation token: %w", err)
+		return nil, fmt.Errorf("failed to generate OTP: %w", err)
 	}
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().Add(10 * time.Minute)
 
 	// Create user
 	user = &models.User{
@@ -213,14 +213,22 @@ func (s *authService) UnlinkTelegram(ctx context.Context, userID uuid.UUID) erro
 	return s.chatRepo.Delete(ctx, link.ID)
 }
 
-func (s *authService) ConfirmEmail(ctx context.Context, token string) error {
-	user, err := s.userRepo.GetByConfirmationToken(ctx, token)
+func (s *authService) ConfirmEmail(ctx context.Context, email, otp string) error {
+	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("invalid or expired confirmation token")
+		return fmt.Errorf("user not found")
+	}
+
+	if user.IsConfirmed {
+		return fmt.Errorf("email is already confirmed")
+	}
+
+	if user.ConfirmationToken == nil || *user.ConfirmationToken != otp {
+		return fmt.Errorf("invalid verification code")
 	}
 
 	if user.ConfirmationExpiresAt != nil && time.Now().After(*user.ConfirmationExpiresAt) {
-		return fmt.Errorf("confirmation token has expired")
+		return fmt.Errorf("verification code has expired")
 	}
 
 	return s.userRepo.UpdateConfirmationStatus(ctx, user.ID, true)
@@ -236,17 +244,17 @@ func (s *authService) ResendConfirmation(ctx context.Context, email string) erro
 		return fmt.Errorf("email is already confirmed")
 	}
 
-	// Generate new token
-	token, err := generateEmailConfirmationToken(32)
+	// Generate new 6-digit OTP
+	token, err := generateOTP()
 	if err != nil {
-		return fmt.Errorf("failed to generate confirmation token: %w", err)
+		return fmt.Errorf("failed to generate verification code: %w", err)
 	}
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().Add(10 * time.Minute)
 
 	// Update user with new token
 	err = s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt)
 	if err != nil {
-		return fmt.Errorf("failed to update confirmation token: %w", err)
+		return fmt.Errorf("failed to update verification code: %w", err)
 	}
 
 	// Send confirmation email asynchronously
@@ -260,12 +268,14 @@ func (s *authService) ResendConfirmation(ctx context.Context, email string) erro
 }
 
 // Helper methods
-func generateEmailConfirmationToken(length int) (string, error) {
-	b := make([]byte, length)
+func generateOTP() (string, error) {
+	b := make([]byte, 3)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+	// Generate a 6-digit number (000000-999999)
+	otp := fmt.Sprintf("%06d", (int(b[0])<<16|int(b[1])<<8|int(b[2]))%1000000)
+	return otp, nil
 }
 
 func hashPassword(password string) (string, error) {

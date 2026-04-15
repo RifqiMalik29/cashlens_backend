@@ -69,23 +69,29 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+		OTP   string `json:"otp" validate:"required,len=6"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Confirmation token is required"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
 		return
 	}
 
-	if err := h.authService.ConfirmEmail(r.Context(), token); err != nil {
+	if err := h.authService.ConfirmEmail(r.Context(), req.Email, req.OTP); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Redirect to mobile app
-	http.Redirect(w, r, h.config.Mail.MobileDeepLink, http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "Email confirmed successfully. You can now log in.",
+	})
 }
 
 func (h *AuthHandler) ResendConfirmation(w http.ResponseWriter, r *http.Request) {

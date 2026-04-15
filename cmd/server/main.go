@@ -246,7 +246,7 @@ func main() {
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/refresh", authHandler.Refresh)
-			r.Get("/auth/confirm", authHandler.ConfirmEmail)
+			r.Post("/auth/confirm", authHandler.ConfirmEmail)
 			r.Post("/auth/resend-confirmation", authHandler.ResendConfirmation)
 		})
 

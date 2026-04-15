@@ -693,6 +693,72 @@ paths:
                   value:
                     error: "token has been revoked"
 
+  /api/v1/auth/confirm:
+    post:
+      summary: Confirm email with OTP
+      description: Verify user's email address using the 6-digit code sent to their email
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  example: "123456"
+      responses:
+        '200':
+          description: Email confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Email confirmed successfully. You can now log in."
+        '400':
+          description: Invalid or expired code
+
+  /api/v1/auth/resend-confirmation:
+    post:
+      summary: Resend confirmation OTP
+      description: Send a new 6-digit verification code to the user's email
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Code resent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "Confirmation email resent successfully."
+        '400':
+          description: User not found or already confirmed
+
   /api/v1/auth/me:
     get:
       summary: Get current user
