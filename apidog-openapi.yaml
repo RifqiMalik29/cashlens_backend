@@ -1137,9 +1137,16 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Category'
                   message:
                     type: string
               example:
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  name: "Food & Restaurants"
+                  type: "expense"
+                  icon: "utensils"
                 message: "Category updated successfully"
     delete:
       summary: Delete category
@@ -1346,9 +1353,15 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
                   message:
                     type: string
               example:
+                data:
+                  id: "660e8400-e29b-41d4-a716-446655440001"
+                  amount: 75000
+                  description: "Updated lunch expense"
                 message: "Transaction updated successfully"
     delete:
       summary: Delete transaction
@@ -1498,9 +1511,15 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    $ref: '#/components/schemas/Budget'
                   message:
                     type: string
               example:
+                data:
+                  id: "770e8400-e29b-41d4-a716-446655440000"
+                  amount: 1500000
+                  period: "monthly"
                 message: "Budget updated successfully"
     delete:
       summary: Delete budget
