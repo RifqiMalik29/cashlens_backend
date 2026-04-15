@@ -298,10 +298,10 @@ func main() {
 			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
 			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
 
-			// Receipt Scanning
+			// Receipt Scanning (stricter rate limit + 10MB body for image uploads)
 			r.Group(func(r chi.Router) {
-				// Stricter rate limit for expensive AI scanning
 				r.Use(httprate.LimitByIP(cfg.RateLimit.ScannerRequests, cfg.RateLimit.ScannerWindow))
+				r.Use(custommiddleware.MaxBodyLimit(10 << 20))
 				r.Post("/receipts/scan", receiptHandler.ScanReceipt)
 			})
 
@@ -333,13 +333,6 @@ func main() {
 			r.Get("/drafts/{id}", draftHandler.Get)
 			r.Post("/drafts/{id}/confirm", draftHandler.Confirm)
 			r.Delete("/drafts/{id}", draftHandler.Delete)
-		})
-
-		// Receipt Scanner (separate group with higher body limit for image uploads)
-		r.Group(func(r chi.Router) {
-			r.Use(custommiddleware.Auth(authService))
-			r.Use(custommiddleware.MaxBodyLimit(10 << 20)) // 10MB for image uploads
-			r.Post("/receipts/scan", receiptHandler.ScanReceipt)
 		})
 
 		// Webhook routes (rate-limited; full signature verification required before enabling)
