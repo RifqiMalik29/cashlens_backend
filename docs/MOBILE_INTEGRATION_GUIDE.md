@@ -24,6 +24,19 @@ All successful backend responses are now wrapped in a `data` object for consiste
 *   **Access Token:** Renamed from `token` to `access_token`.
 *   **Refresh Token:** Now explicitly returned as `refresh_token`.
 
+### Automatic OTP Resend on Login
+If a user with an unconfirmed email attempts to log in with correct credentials:
+1.  The backend **automatically sends a new 6-digit OTP** to their email.
+2.  The backend returns a **403 Forbidden** with a structured (non-error) response body:
+    ```json
+    {
+      "requires_confirmation": true,
+      "email": "user@example.com",
+      "message": "Your email is not confirmed. A new verification code has been sent to your email."
+    }
+    ```
+3.  **Mobile Action:** On a `403` response from `/auth/login`, check for `requires_confirmation: true`. If present, navigate the user directly to the OTP verification screen, pre-filling the `email` field from the response. Do **not** show a generic error toast for this case.
+
 ## 4. Receipt Scanner & OCR Fallback
 We have implemented a **Cascading Fallback** strategy to ensure the scanner works even under poor network conditions or with blurry images.
 

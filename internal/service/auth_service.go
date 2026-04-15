@@ -15,6 +15,16 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ErrEmailNotConfirmed is returned when a user tries to login without confirming their email.
+// It carries the email so the handler can include it in the response.
+type ErrEmailNotConfirmed struct {
+	Email string
+}
+
+func (e *ErrEmailNotConfirmed) Error() string {
+	return "EMAIL_NOT_CONFIRMED"
+}
+
 type AuthService interface {
 	Register(ctx context.Context, req models.CreateUserRequest) (*models.AuthResponse, error)
 	Login(ctx context.Context, req models.LoginRequest) (*models.AuthResponse, error)
@@ -136,7 +146,10 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 
 	// Check if email is confirmed
 	if !user.IsConfirmed {
-		return nil, fmt.Errorf("please confirm your email address before logging in")
+		if err := s.sendConfirmationOTP(ctx, user); err != nil {
+			slog.Error("Failed to resend OTP on login", "email", user.Email, "error", err)
+		}
+		return nil, &ErrEmailNotConfirmed{Email: user.Email}
 	}
 
 	// Generate JWT
@@ -255,23 +268,26 @@ func (s *authService) ResendConfirmation(ctx context.Context, email string) erro
 		return fmt.Errorf("email is already confirmed")
 	}
 
-	// Generate new 6-digit OTP
+	return s.sendConfirmationOTP(ctx, user)
+}
+
+// sendConfirmationOTP generates a new OTP, persists it, and dispatches the confirmation email.
+// It returns an error if OTP generation or DB persistence fails.
+func (s *authService) sendConfirmationOTP(ctx context.Context, user *models.User) error {
 	token, err := generateOTP()
 	if err != nil {
 		return fmt.Errorf("failed to generate verification code: %w", err)
 	}
 	expiresAt := time.Now().Add(10 * time.Minute)
 
-	// Update user with new token
-	err = s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt)
-	if err != nil {
+	if err := s.userRepo.UpdateConfirmationToken(ctx, user.ID, token, expiresAt); err != nil {
 		return fmt.Errorf("failed to update verification code: %w", err)
 	}
 
-	// Send confirmation email asynchronously
+	email := user.Email
 	go func() {
-		if err := s.mailer.SendConfirmationEmail(user.Email, token); err != nil {
-			slog.Error("Failed to send confirmation email", "email", user.Email, "error", err)
+		if err := s.mailer.SendConfirmationEmail(email, token); err != nil {
+			slog.Error("Failed to send confirmation email", "email", email, "error", err)
 		}
 	}()
 

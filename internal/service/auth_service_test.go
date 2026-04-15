@@ -111,7 +111,7 @@ func TestAuthService_Login_StrictConfirmation(t *testing.T) {
 	password := "password123"
 	hashedPassword, _ := hashPassword(password)
 
-	t.Run("Login fails if not confirmed", func(t *testing.T) {
+	t.Run("Login fails if not confirmed and resends OTP", func(t *testing.T) {
 		userRepo := new(MockUserRepository)
 		seedingService := new(MockCategorySeedingService)
 		mailer := new(MockMailer)
@@ -125,6 +125,8 @@ func TestAuthService_Login_StrictConfirmation(t *testing.T) {
 		}
 
 		userRepo.On("GetByEmail", ctx, email).Return(unconfirmedUser, nil)
+		userRepo.On("UpdateConfirmationToken", ctx, unconfirmedUser.ID, mock.AnythingOfType("string"), mock.AnythingOfType("time.Time")).Return(nil)
+		mailer.On("SendConfirmationEmail", email, mock.AnythingOfType("string")).Return(nil)
 
 		res, err := s.Login(ctx, models.LoginRequest{
 			Email:    email,
@@ -132,7 +134,9 @@ func TestAuthService_Login_StrictConfirmation(t *testing.T) {
 		})
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "please confirm your email")
+		var notConfirmed *ErrEmailNotConfirmed
+		assert.ErrorAs(t, err, &notConfirmed)
+		assert.Equal(t, email, notConfirmed.Email)
 		assert.Nil(t, res)
 		userRepo.AssertExpectations(t)
 	})

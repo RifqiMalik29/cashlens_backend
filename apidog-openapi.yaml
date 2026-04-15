@@ -677,6 +677,27 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Invalid email or password"
+        '403':
+          description: Email not confirmed — OTP automatically resent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requires_confirmation:
+                    type: boolean
+                    example: true
+                  email:
+                    type: string
+                    format: email
+                    example: "user@example.com"
+                  message:
+                    type: string
+                    example: "Your email is not confirmed. A new verification code has been sent to your email."
+              example:
+                requires_confirmation: true
+                email: "user@example.com"
+                message: "Your email is not confirmed. A new verification code has been sent to your email."
 
   /api/v1/auth/refresh:
     post:

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -142,6 +143,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	res, err := h.authService.Login(r.Context(), req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		var notConfirmed *service.ErrEmailNotConfirmed
+		if errors.As(err, &notConfirmed) {
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{
+				"requires_confirmation": true,
+				"email":                 notConfirmed.Email,
+				"message":               "Your email is not confirmed. A new verification code has been sent to your email.",
+			})
+			return
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
