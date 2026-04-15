@@ -249,16 +249,16 @@ func main() {
 	}
 
 	r.Use(custommiddleware.CORS(custommiddleware.CORSConfig{
-		AllowedOrigins: []string{"*"}, // Add your production domains here
+		AllowedOrigins: cfg.CORS.AllowedOrigins,
 		Environment:    cfg.Server.Environment,
 	}))
 	r.Use(custommiddleware.SecurityHeaders(custommiddleware.SecurityHeadersConfig{
 		Environment: cfg.Server.Environment,
 	}))
 
-	// Warn if production CORS is not configured
-	if cfg.Server.Environment == "production" && len([]string{}) == 0 {
-		log.Warn("WARNING: Production CORS allowed origins is empty — all browser requests will be 403'd. Update AllowedOrigins in cmd/server/main.go")
+	// Warn if production CORS is wide open
+	if cfg.Server.Environment == "production" && (len(cfg.CORS.AllowedOrigins) == 0 || cfg.CORS.AllowedOrigins[0] == "*") {
+		log.Warn("WARNING: Production CORS is wide open (*) — restrict this in production via ALLOWED_ORIGINS env var")
 	}
 
 	// Health check (public, no rate limiting)
@@ -296,6 +296,13 @@ func main() {
 			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
 			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
 			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
+
+			// Receipt Scanning
+			r.Group(func(r chi.Router) {
+				// Stricter rate limit for expensive AI scanning
+				r.Use(httprate.LimitByIP(cfg.RateLimit.ScannerRequests, cfg.RateLimit.ScannerWindow))
+				r.Post("/receipts/scan", receiptHandler.ScanReceipt)
+			})
 
 			// Categories
 			r.Post("/categories", categoryHandler.Create)
