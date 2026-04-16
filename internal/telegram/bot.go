@@ -475,37 +475,71 @@ func (b *BotService) handleLink(chatID int64, email string, username *string) {
 }
 
 func (b *BotService) handleMessage(chatID int64, text string) {
-	// Find user by chat_id
 	link, err := b.chatRepo.GetByChatID(context.Background(), fmt.Sprintf("%d", chatID), "telegram")
 	if err != nil {
 		b.sendReply(chatID, "⚠️ Your account is not linked yet.\nSend /link <your-email> to get started.")
 		return
 	}
 
-	// Smart parse the message
-	parsed := b.smartParse(text)
-
-	// Create draft
-	draftReq := models.CreateDraftRequest{
-		CategoryID:      parsed.CategoryID,
-		Amount:          &parsed.Amount,
-		Description:     &parsed.Description,
-		TransactionDate: &parsed.Date,
-		Source:          models.DraftSourceTelegram,
-		RawData: map[string]any{
-			"message_text": text,
-			"parsed_by":    "smart_parser",
-		},
-	}
-
-	draft, err := b.draftSvc.Create(context.Background(), link.UserID, draftReq)
+	// Fetch and filter to fixed 6 categories
+	allCategories, err := b.categoryRepo.ListByUserID(context.Background(), link.UserID)
 	if err != nil {
-		b.sendReply(chatID, fmt.Sprintf("❌ Failed to create draft: %v", err))
+		b.sendReply(chatID, "❌ Gagal memuat kategori. Coba lagi ya!")
+		return
+	}
+	categories := filterFixedCategories(allCategories)
+
+	// Parse message with AI
+	parsed, err := b.parseMessageWithAI(text, categories, time.Now().Truncate(24*time.Hour))
+	if err != nil {
+		log.Printf("[Telegram Bot] AI parse failed: %v", err)
+		b.sendReply(chatID, "❌ Gagal memproses pesanmu. Coba lagi ya!")
 		return
 	}
 
-	// Show AI-powered category selector
-	b.showAICategorySelector(chatID, draft, text)
+	if len(parsed) == 0 {
+		b.sendReply(chatID, "🤔 Aku tidak menemukan transaksi dalam pesanmu. Coba kirim seperti: 50K makan siang")
+		return
+	}
+
+	for _, pt := range parsed {
+		desc := pt.Description
+		date := pt.Date
+
+		draftReq := models.CreateDraftRequest{
+			CategoryID:      pt.CategoryID,
+			Amount:          &pt.Amount,
+			Description:     &desc,
+			TransactionDate: &date,
+			Source:          models.DraftSourceTelegram,
+			RawData: map[string]any{
+				"message_text": text,
+				"parsed_by":    "gemini_ai",
+				"is_planned":   pt.IsDraft,
+			},
+		}
+
+		draft, err := b.draftSvc.Create(context.Background(), link.UserID, draftReq)
+		if err != nil {
+			log.Printf("[Telegram Bot] Failed to create draft: %v", err)
+			b.sendReply(chatID, fmt.Sprintf("❌ Gagal menyimpan transaksi: %s", desc))
+			continue
+		}
+
+		label := "✅ Draft Created!"
+		if pt.IsDraft {
+			label = "📅 [Rencana] Draft Created!"
+		}
+
+		b.sendReply(chatID, fmt.Sprintf("%s\n\n💰 Rp %.0f\n📝 %s\n📅 %s",
+			label,
+			pt.Amount,
+			desc,
+			date.Format("2006-01-02"),
+		))
+
+		b.showConfirmRejectButtons(chatID, draft)
+	}
 }
 
 func (b *BotService) showAICategorySelector(chatID int64, draft *models.DraftTransaction, originalMessage string) {
