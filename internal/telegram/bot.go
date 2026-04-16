@@ -24,6 +24,7 @@ type BotService struct {
 	botToken        string
 	geminiAPIKey    string
 	geminiModel     string
+	fallbackModels  []string
 	draftSvc        service.DraftService
 	transactionSvc  service.TransactionService
 	budgetSvc       service.BudgetService
@@ -36,11 +37,12 @@ type BotService struct {
 	httpClient      *http.Client
 }
 
-func NewBotService(botToken string, geminiAPIKey string, geminiModel string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
+func NewBotService(botToken string, geminiAPIKey string, geminiModel string, fallbackModels []string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
 	return &BotService{
 		botToken:        botToken,
 		geminiAPIKey:    geminiAPIKey,
 		geminiModel:     geminiModel,
+		fallbackModels:  fallbackModels,
 		draftSvc:        draftSvc,
 		transactionSvc:  transactionSvc,
 		budgetSvc:       budgetSvc,
@@ -598,47 +600,79 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 		return "", fmt.Errorf("Gemini API key not configured")
 	}
 
-	requestBody := GeminiTextRequest{
-		Contents: []GeminiContent{
-			{
-				Parts: []GeminiPart{
-					{Text: prompt},
+	// Create a unique list of models to try, starting with the primary model
+	modelSet := make(map[string]bool)
+	allModels := []string{b.geminiModel}
+	modelSet[b.geminiModel] = true
+
+	for _, m := range b.fallbackModels {
+		if !modelSet[m] {
+			allModels = append(allModels, m)
+			modelSet[m] = true
+		}
+	}
+
+	var lastErr error
+	for i, model := range allModels {
+		for attempt := 0; attempt < 3; attempt++ { // 3 attempts per model
+			if attempt > 0 || model != b.geminiModel {
+				log.Printf("[Telegram Bot] Retrying AI category detection with model %s, attempt %d", model, attempt+1)
+			}
+
+			requestBody := GeminiTextRequest{
+				Contents: []GeminiContent{
+					{
+						Parts: []GeminiPart{
+							{Text: prompt},
+						},
+					},
 				},
-			},
-		},
-		GenerationConfig: &GeminiGenerationConfig{
-			Temperature: 0.1,
-		},
+				GenerationConfig: &GeminiGenerationConfig{
+					Temperature: 0.1,
+				},
+			}
+
+			jsonBody, err := json.Marshal(requestBody)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to marshal request for model %s: %w", model, err)
+				break // Cannot marshal, try next model
+			}
+
+			url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, b.geminiAPIKey)
+
+			resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+			if err != nil {
+				lastErr = fmt.Errorf("failed to call Gemini API with model %s: %w", model, err)
+				time.Sleep(time.Duration(1<<attempt) * time.Second) // Exponential backoff
+				continue
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				lastErr = fmt.Errorf("Gemini API error with model %s (status %d): %s", model, resp.StatusCode, string(body))
+				time.Sleep(time.Duration(1<<attempt) * time.Second) // Exponential backoff
+				continue
+			}
+
+			var geminiResp GeminiResponse
+			if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+				lastErr = fmt.Errorf("failed to decode response for model %s: %w", model, err)
+				time.Sleep(time.Duration(1<<attempt) * time.Second) // Exponential backoff
+				continue
+			}
+
+			if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+				lastErr = fmt.Errorf("empty response from Gemini API for model %s", model)
+				time.Sleep(time.Duration(1<<attempt) * time.Second) // Exponential backoff
+				continue
+			}
+
+			return geminiResp.Candidates[0].Content.Parts[0].Text, nil // Success
+		}
 	}
 
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", b.geminiModel, b.geminiAPIKey)
-
-	resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to call Gemini API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var geminiResp GeminiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("empty response from Gemini API")
-	}
-
-	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+	return "", fmt.Errorf("AI category detection failed after multiple fallback attempts: %w", lastErr)
 }
 
 type ParsedMessage struct {
@@ -648,40 +682,69 @@ type ParsedMessage struct {
 	Date        time.Time
 }
 
+var fixedCategoryNames = []string{
+	"Makanan & Minuman",
+	"Transportasi",
+	"Belanja",
+	"Hiburan",
+	"Kesehatan",
+	"Lainnya",
+}
+
+type ParsedTransaction struct {
+	Amount      float64
+	Description string
+	Date        time.Time
+	CategoryID  *uuid.UUID
+	IsDraft     bool
+}
+
 func (b *BotService) smartParse(text string) ParsedMessage {
-	// Pattern: "amount description" or "amount description category"
-	// Examples: "35000 lunch", "50000 transport grab", "120000 shopping shoes"
+	totalAmount := 0.0
+	cleanedDescription := text
 
-	amountRegex := regexp.MustCompile(`^(\d+(?:[.,]\d+)?)\s+(.+)$`)
-	matches := amountRegex.FindStringSubmatch(strings.TrimSpace(text))
+	// Regex to find amounts like "10K", "10000", "14.5K", "14,500"
+	// This regex will also capture "kemarin" because it matches any word, so need to refine description.
+	amountPattern := regexp.MustCompile(`(\d+(?:[.,]\d+)?)(K)?`)
+	amountMatches := amountPattern.FindAllStringSubmatchIndex(text, -1)
 
-	result := ParsedMessage{
-		Date: time.Now().Truncate(24 * time.Hour),
-	}
+	// Collect amounts and remove them from description
+	// Iterate in reverse to avoid index issues when removing
+	for i := len(amountMatches) - 1; i >= 0; i-- {
+		match := amountMatches[i]
+		// Extract the number part of the amount
+		amountStr := text[match[2]:match[3]] 
+		suffix := ""
+		if match[4] != -1 { // If K suffix exists
+			suffix = text[match[4]:match[5]]
+		}
 
-	if len(matches) >= 3 {
-		amountStr := strings.ReplaceAll(matches[1], ",", "")
+		amountStr = strings.ReplaceAll(amountStr, ",", "") // Remove comma for parsing
 		amount, err := strconv.ParseFloat(amountStr, 64)
 		if err == nil {
-			result.Amount = amount
+			if strings.EqualFold(suffix, "K") {
+				amount *= 1000
+			}
+			totalAmount += amount
 		}
+		// Remove the amount from the description
+		cleanedDescription = cleanedDescription[:match[0]] + cleanedDescription[match[1]:]
+	}
 
-		description := matches[2]
-		result.Description = description
+	// Clean up description: remove extra spaces, leading/trailing punctuation
+	cleanedDescription = strings.TrimSpace(cleanedDescription)
+	cleanedDescription = regexp.MustCompile(`\s+`).ReplaceAllString(cleanedDescription, " ") // Replace multiple spaces with single
+	cleanedDescription = strings.Trim(cleanedDescription, ",.-") // Remove common leading/trailing punctuation
 
-		// Try to detect category from keywords
-		lower := strings.ToLower(description)
-		if strings.Contains(lower, "makan") || strings.Contains(lower, "lunch") || strings.Contains(lower, "dinner") || strings.Contains(lower, "breakfast") || strings.Contains(lower, "kopi") || strings.Contains(lower, "coffee") {
-			// cat_food - but we don't have category lookup here, so leave nil
-			// User can adjust in app
-		} else if strings.Contains(lower, "transport") || strings.Contains(lower, "grab") || strings.Contains(lower, "gojek") || strings.Contains(lower, "bensin") || strings.Contains(lower, "parkir") {
-			// cat_transport
-		} else if strings.Contains(lower, "belanja") || strings.Contains(lower, "shopping") || strings.Contains(lower, "baju") || strings.Contains(lower, "elektronik") {
-			// cat_shopping
-		}
-	} else {
-		// Fallback: try to just extract amount
-		result.Description = text
+	result := ParsedMessage{
+		Amount:      totalAmount,
+		Description: cleanedDescription,
+		Date:        time.Now().Truncate(24 * time.Hour), // Default to today
+	}
+
+	// Handle "kemarin" (yesterday)
+	if strings.Contains(strings.ToLower(text), "kemarin") {
+		result.Date = result.Date.AddDate(0, 0, -1)
 	}
 
 	return result
