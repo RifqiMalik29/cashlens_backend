@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -709,13 +708,6 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 	return "", fmt.Errorf("AI category detection failed after multiple fallback attempts: %w", lastErr)
 }
 
-type ParsedMessage struct {
-	Amount      float64
-	Description string
-	CategoryID  *uuid.UUID
-	Date        time.Time
-}
-
 var fixedCategoryNames = []string{
 	"Makanan & Minuman",
 	"Transportasi",
@@ -903,57 +895,6 @@ type ParsedTransaction struct {
 	Date        time.Time
 	CategoryID  *uuid.UUID
 	IsDraft     bool
-}
-
-func (b *BotService) smartParse(text string) ParsedMessage {
-	totalAmount := 0.0
-	cleanedDescription := text
-
-	// Regex to find amounts like "10K", "10000", "14.5K", "14,500"
-	// This regex will also capture "kemarin" because it matches any word, so need to refine description.
-	amountPattern := regexp.MustCompile(`(\d+(?:[.,]\d+)?)(K)?`)
-	amountMatches := amountPattern.FindAllStringSubmatchIndex(text, -1)
-
-	// Collect amounts and remove them from description
-	// Iterate in reverse to avoid index issues when removing
-	for i := len(amountMatches) - 1; i >= 0; i-- {
-		match := amountMatches[i]
-		// Extract the number part of the amount
-		amountStr := text[match[2]:match[3]] 
-		suffix := ""
-		if match[4] != -1 { // If K suffix exists
-			suffix = text[match[4]:match[5]]
-		}
-
-		amountStr = strings.ReplaceAll(amountStr, ",", "") // Remove comma for parsing
-		amount, err := strconv.ParseFloat(amountStr, 64)
-		if err == nil {
-			if strings.EqualFold(suffix, "K") {
-				amount *= 1000
-			}
-			totalAmount += amount
-		}
-		// Remove the amount from the description
-		cleanedDescription = cleanedDescription[:match[0]] + cleanedDescription[match[1]:]
-	}
-
-	// Clean up description: remove extra spaces, leading/trailing punctuation
-	cleanedDescription = strings.TrimSpace(cleanedDescription)
-	cleanedDescription = regexp.MustCompile(`\s+`).ReplaceAllString(cleanedDescription, " ") // Replace multiple spaces with single
-	cleanedDescription = strings.Trim(cleanedDescription, ",.-") // Remove common leading/trailing punctuation
-
-	result := ParsedMessage{
-		Amount:      totalAmount,
-		Description: cleanedDescription,
-		Date:        time.Now().Truncate(24 * time.Hour), // Default to today
-	}
-
-	// Handle "kemarin" (yesterday)
-	if strings.Contains(strings.ToLower(text), "kemarin") {
-		result.Date = result.Date.AddDate(0, 0, -1)
-	}
-
-	return result
 }
 
 func (b *BotService) handleRecent(chatID int64) {
