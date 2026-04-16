@@ -749,46 +749,77 @@ func (b *BotService) parseMessageWithAI(text string, categories []*models.Catego
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are a financial transaction parser for an Indonesian personal finance app.
-Parse the following message and return ONLY a JSON array of transactions. Today is %s.
+	tomorrow := today.AddDate(0, 0, 1).Format("2006-01-02")
+	yesterday := today.AddDate(0, 0, -1).Format("2006-01-02")
+	weekAgo := today.AddDate(0, 0, -7).Format("2006-01-02")
 
-Message: "%s"
+	prompt := fmt.Sprintf(`You are an expert financial transaction parser for an Indonesian personal finance app called CashLens.
 
-Return a JSON array where each item has:
-{
-  "amount": <number in IDR, expand K suffix: 50K = 50000>,
-  "description": "<clean short description in the original language>",
-  "date": "<YYYY-MM-DD resolved from context: hari ini=today, kemarin=yesterday, etc.>",
-  "category_id": "<UUID from the list below, default to Lainnya if unsure>",
-  "is_draft": <true if future intent: nanti/mau/akan/rencana/mau beli, false if past/present>
-}
+Your job is to extract transactions from a user's natural language message (written in Indonesian or mixed Indonesian-English) and return ONLY a valid JSON array.
 
-Available categories (UUID - Name):
+Today's date is: %s (YYYY-MM-DD)
+
+User's message: "%s"
+
+Available categories (use the exact UUID):
 %s
-Fallback category (Lainnya) UUID: %s
+Fallback category "Lainnya" UUID: %s
 
-Rules:
-- One object per distinct transaction found in the message
-- Skip items with amount = 0 or unclear amount
-- "hari ini" or no time word = today (%s)
-- "kemarin" = yesterday (%s)
-- "nanti", "mau", "akan", "rencana", "mau beli" = is_draft true
-- "habis", "beli", "bayar" with past context = is_draft false
+---
 
-Context-aware categorization (important):
-- When multiple transactions appear in the same message, use surrounding context to infer category
-- Example: "habis 50K makan kemarin habis 60K" → both are food, same category
-- If transaction description matches keywords from earlier descriptions, use the same category
-- Example: "beli bensin" and "bensin" = both Transportasi, not separate
-- Categorize each transaction based on ALL transaction descriptions in the message, not just its own
+EXTRACTION RULES:
 
-- Return [] if no transactions found`,
+1. AMOUNT
+   - Extract numeric values and convert shorthand: 50K → 50000, 2jt → 2000000, 1.5jt → 1500000
+   - Always use positive numbers
+   - Skip transactions with unclear or zero amount
+
+2. DATE
+   - "hari ini", no time word → %s
+   - "kemarin" → %s
+   - "besok" → %s
+   - "minggu lalu" → %s
+   - Always return in YYYY-MM-DD format
+
+3. DESCRIPTION
+   - Write a short, clean description (max 5 words) in the same language as the user
+   - Remove filler words like "habis", "tadi", "baru"
+   - Example: "habis makan siang di warteg" → "Makan siang warteg"
+
+4. CATEGORY
+   - Match each transaction to the closest category UUID from the list above
+   - Use surrounding context in the message to infer category
+   - Example: "habis 50K makan kemarin, 60K" → both are food, same category
+   - Default to "Lainnya" UUID if no category matches
+
+5. IS_DRAFT
+   - false → past or present transactions: "habis", "beli", "bayar", "tadi", "kemarin"
+   - true → future intent: "mau", "nanti", "rencana", "akan", "mau beli"
+
+---
+
+OUTPUT FORMAT:
+Return ONLY a JSON array, no explanation, no markdown, no extra text.
+
+[
+  {
+    "amount": 50000,
+    "description": "Makan siang warteg",
+    "date": "2026-04-15",
+    "category_id": "uuid-here",
+    "is_draft": false
+  }
+]
+
+Return [] if no valid transactions are found.`,
 		today.Format("2006-01-02"),
 		text,
 		catLines.String(),
 		lainnyaID,
 		today.Format("2006-01-02"),
-		today.AddDate(0, 0, -1).Format("2006-01-02"),
+		yesterday,
+		tomorrow,
+		weekAgo,
 	)
 
 	requestBody := GeminiTextRequest{
