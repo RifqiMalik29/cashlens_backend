@@ -774,6 +774,14 @@ Rules:
 - "kemarin" = yesterday (%s)
 - "nanti", "mau", "akan", "rencana", "mau beli" = is_draft true
 - "habis", "beli", "bayar" with past context = is_draft false
+
+Context-aware categorization (important):
+- When multiple transactions appear in the same message, use surrounding context to infer category
+- Example: "habis 50K makan kemarin habis 60K" → both are food, same category
+- If transaction description matches keywords from earlier descriptions, use the same category
+- Example: "beli bensin" and "bensin" = both Transportasi, not separate
+- Categorize each transaction based on ALL transaction descriptions in the message, not just its own
+
 - Return [] if no transactions found`,
 		today.Format("2006-01-02"),
 		text,
