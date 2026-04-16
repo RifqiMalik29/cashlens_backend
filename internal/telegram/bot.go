@@ -691,6 +691,21 @@ var fixedCategoryNames = []string{
 	"Lainnya",
 }
 
+// filterFixedCategories returns only the 6 fixed expense categories from the user's full list.
+func filterFixedCategories(all []*models.Category) []*models.Category {
+	nameSet := make(map[string]bool, len(fixedCategoryNames))
+	for _, n := range fixedCategoryNames {
+		nameSet[n] = true
+	}
+	filtered := make([]*models.Category, 0, 6)
+	for _, c := range all {
+		if nameSet[c.Name] {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
+}
+
 type ParsedTransaction struct {
 	Amount      float64
 	Description string
