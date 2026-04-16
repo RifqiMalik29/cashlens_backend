@@ -613,7 +613,7 @@ func (b *BotService) callGeminiForCategory(prompt string) (string, error) {
 	}
 
 	var lastErr error
-	for i, model := range allModels {
+	for _, model := range allModels {
 		for attempt := 0; attempt < 3; attempt++ { // 3 attempts per model
 			if attempt > 0 || model != b.geminiModel {
 				log.Printf("[Telegram Bot] Retrying AI category detection with model %s, attempt %d", model, attempt+1)
