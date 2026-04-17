@@ -49,7 +49,7 @@ func (s *trialEligibilityService) CheckAndSetTrial(user *models.User, newDeviceI
 	var deviceHasHadTrial bool
 	if newDeviceID != nil && *newDeviceID != "" {
 		usersByDeviceID, err := s.userRepo.GetByDeviceID(ctx, *newDeviceID) // Use GetByDeviceID from updated repo
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) { // GetByDeviceID returns slice, so ErrNotFound not expected
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {                   // GetByDeviceID returns slice, so ErrNotFound not expected
 			return false, err // Propagate actual errors
 		}
 		for _, u := range usersByDeviceID {

@@ -100,10 +100,10 @@ func TestUserRepository_FindByDeviceID(t *testing.T) {
 		IsConfirmed:           true,
 		ConfirmationToken:     nil,
 		ConfirmationExpiresAt: nil,
-		DeviceID:              &deviceID1, // New field
-		TrialStartAt:          &now,        // New field
+		DeviceID:              &deviceID1,                                                          // New field
+		TrialStartAt:          &now,                                                                // New field
 		TrialEndAt:            func() *time.Time { t := now.Add(7 * 24 * time.Hour); return &t }(), // New field
-		TrialStatus:           "active",    // New field
+		TrialStatus:           "active",                                                            // New field
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}
@@ -160,7 +160,6 @@ func TestUserRepository_FindByDeviceID(t *testing.T) {
 	}
 	err = repo.Create(ctx, user3)
 	require.NoError(t, err)
-
 
 	// Find users by deviceID1
 	foundUsers, err := repo.GetByDeviceID(ctx, deviceID1)

@@ -69,9 +69,9 @@ type RateLimitConfig struct {
 }
 
 type Gemini struct {
-	APIKey        string
-	ScanningModel string
-	TelegramModel string
+	APIKey                 string
+	ScanningModel          string
+	TelegramModel          string
 	TelegramFallbackModels []string
 }
 
@@ -111,9 +111,9 @@ func Load() (*Config, error) {
 			ScannerWindow:   parseDuration(getEnv("RATE_LIMIT_SCANNER_WINDOW", "1m"), time.Minute),
 		},
 		GeminiAPI: Gemini{
-			APIKey:        os.Getenv("GEMINI_API_KEY"),
-			ScanningModel: getEnv("SCANNING_AI", "gemini-2.5-flash"),
-			TelegramModel: getEnv("TELEGRAM_AI", "gemini-2.5-flash"),
+			APIKey:                 os.Getenv("GEMINI_API_KEY"),
+			ScanningModel:          getEnv("SCANNING_AI", "gemini-2.5-flash"),
+			TelegramModel:          getEnv("TELEGRAM_AI", "gemini-2.5-flash"),
 			TelegramFallbackModels: []string{},
 		},
 		Telegram: Telegram{

@@ -111,7 +111,8 @@ func main() {
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
 
 	mailerService := mailer.NewMailer(cfg.Mail)
-	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration)
+	trialEligibilityService := service.NewTrialEligibilityService(userRepo)
+	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration, trialEligibilityService)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -124,6 +125,7 @@ func main() {
 	transactionService := service.NewTransactionService(transactionRepo, quotaService)
 	budgetService := service.NewBudgetService(budgetRepo)
 	draftService := service.NewDraftService(draftRepo, transactionRepo)
+	paymentService := service.NewPaymentService(xenditClient)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
@@ -142,6 +144,7 @@ func main() {
 		getEnv("XENDIT_SUCCESS_URL", "cashlens://payment/success"),
 		getEnv("XENDIT_FAILURE_URL", "cashlens://payment/failed"),
 	)
+	paymentHandler := handlers.NewPaymentHandler(paymentService, authService, cfg, log)
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
@@ -285,8 +288,12 @@ func main() {
 			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
 			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit for JSON requests
 
+			// Payments
+			r.Post("/payments/create-session", paymentHandler.CreatePaymentSession)
+
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
+			r.Get("/auth/me/trial-status", authHandler.GetTrialStatus)
 			r.Get("/auth/telegram/status", authHandler.GetTelegramStatus)
 			r.Delete("/auth/telegram/status", authHandler.UnlinkTelegram)
 			r.Patch("/auth/language", authHandler.UpdateLanguage)

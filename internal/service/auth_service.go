@@ -40,12 +40,12 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepo               repository.UserRepository
-	categorySeedingService CategorySeedingService
-	chatRepo               repository.ChatLinkRepository
-	mailer                 mailer.Mailer
-	jwtSecret              string
-	jwtExpiration          time.Duration
+	userRepo                repository.UserRepository
+	categorySeedingService  CategorySeedingService
+	chatRepo                repository.ChatLinkRepository
+	mailer                  mailer.Mailer
+	jwtSecret               string
+	jwtExpiration           time.Duration
 	trialEligibilityService TrialEligibilityService // Change to interface type
 }
 
@@ -59,12 +59,12 @@ func NewAuthService(
 	trialEligibilityService TrialEligibilityService, // Change to interface type
 ) AuthService {
 	return &authService{
-		userRepo:               userRepo,
-		categorySeedingService: categorySeedingService,
-		chatRepo:               chatRepo,
-		mailer:                 mailer,
-		jwtSecret:              jwtSecret,
-		jwtExpiration:          jwtExpiration,
+		userRepo:                userRepo,
+		categorySeedingService:  categorySeedingService,
+		chatRepo:                chatRepo,
+		mailer:                  mailer,
+		jwtSecret:               jwtSecret,
+		jwtExpiration:           jwtExpiration,
 		trialEligibilityService: trialEligibilityService, // Assign new parameter
 	}
 }

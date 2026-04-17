@@ -49,6 +49,22 @@ components:
         is_founder:
           type: boolean
           example: false
+        device_id:
+          type: string
+          nullable: true
+          example: "abc123-device-id"
+        trial_status:
+          type: string
+          enum: [inactive, active, expired, denied]
+          example: "inactive"
+        trial_start_at:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end_at:
+          type: string
+          format: date-time
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -79,6 +95,10 @@ components:
           type: string
           enum: [id, en]
           default: "id"
+        device_id:
+          type: string
+          nullable: true
+          example: "abc123-device-id"
 
     LoginRequest:
       type: object
@@ -94,6 +114,10 @@ components:
           type: string
           format: password
           example: "securePassword123"
+        device_id:
+          type: string
+          nullable: true
+          example: "abc123-device-id"
 
     AuthResponse:
       type: object
@@ -555,6 +579,56 @@ components:
           format: date-time
           example: "2026-04-12T10:30:00Z"
 
+    TrialStatusResponse:
+      type: object
+      properties:
+        trial_status:
+          type: string
+          enum: [inactive, active, expired, denied]
+          example: "active"
+        trial_start_at:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreatePaymentSessionRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - success_redirect_url
+        - failure_redirect_url
+      properties:
+        amount:
+          type: number
+          format: double
+          example: 15000
+        currency:
+          type: string
+          example: "IDR"
+        success_redirect_url:
+          type: string
+          format: uri
+          example: "cashlens://payment/success"
+        failure_redirect_url:
+          type: string
+          format: uri
+          example: "cashlens://payment/failed"
+
+    CreatePaymentSessionResponse:
+      type: object
+      properties:
+        payment_session_id:
+          type: string
+          example: "ps-abc123"
+        payment_link_url:
+          type: string
+          example: "https://checkout.xendit.co/v2/..."
+
     HealthResponse:
       type: object
       properties:
@@ -609,15 +683,18 @@ paths:
               language: "en"
       responses:
         '201':
-          description: User registered successfully
+          description: User registered successfully — email confirmation required before login
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  message:
+                    type: string
                   data:
                     $ref: '#/components/schemas/AuthResponse'
               example:
+                message: "Registration successful. Please check your email to confirm your account."
                 data:
                   access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                   refresh_token: "def456..."
@@ -627,6 +704,9 @@ paths:
                     name: "John Doe"
                     language: "en"
                     subscription_tier: "free"
+                    trial_status: "inactive"
+                    trial_start_at: null
+                    trial_end_at: null
                     created_at: "2026-04-12T10:30:00Z"
                     updated_at: "2026-04-12T10:30:00Z"
         '400':
@@ -861,6 +941,32 @@ paths:
         '401':
           description: Unauthorized
 
+  /api/v1/auth/me/trial-status:
+    get:
+      summary: Get trial status
+      description: Get the authenticated user's free trial status and dates
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Trial status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TrialStatusResponse'
+              example:
+                data:
+                  trial_status: "active"
+                  trial_start_at: "2026-04-17T10:00:00Z"
+                  trial_end_at: "2026-04-24T10:00:00Z"
+        '401':
+          description: Unauthorized
+
   /api/v1/auth/telegram/status:
     get:
       summary: Get Telegram link status
@@ -1025,6 +1131,37 @@ paths:
           description: Verification failed or invalid invoice
         '401':
           description: Unauthorized
+
+  /api/v1/payments/create-session:
+    post:
+      summary: Create payment session
+      description: Create a Xendit payment session (payment link) for a custom amount. Use this for general payments; use /payments/create-invoice for subscription plans.
+      tags:
+        - Payments
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentSessionRequest'
+      responses:
+        '201':
+          description: Payment session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePaymentSessionResponse'
+              example:
+                payment_session_id: "ps-abc123"
+                payment_link_url: "https://checkout.xendit.co/v2/..."
+        '400':
+          description: Validation error
+        '401':
+          description: Unauthorized
+        '500':
+          description: Failed to initiate payment
 
   /api/v1/payments/create-invoice:
     post:

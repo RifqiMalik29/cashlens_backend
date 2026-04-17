@@ -185,7 +185,7 @@ func TestAuthHandler_Register(t *testing.T) {
 		assert.Equal(t, "dummy_access_token", data["access_token"]) // Corrected key
 		userData, ok := data["user"].(map[string]interface{})
 		assert.True(t, ok)
-		assert.Equal(t, deviceID, userData["device_id"])       // Corrected key
+		assert.Equal(t, deviceID, userData["device_id"])    // Corrected key
 		assert.Equal(t, "active", userData["trial_status"]) // Corrected key
 
 		mockAuthService.AssertExpectations(t)
@@ -635,6 +635,66 @@ func TestAuthHandler_Refresh(t *testing.T) {
 		assert.Equal(t, "token expired", responseBody.Error)
 
 		mockRefreshTokenService.AssertExpectations(t)
+	})
+}
+
+func TestAuthHandler_GetTrialStatus(t *testing.T) {
+	mockAuthService := new(MockAuthService)
+	mockRefreshTokenService := new(MockRefreshTokenService)
+	cfg := &config.Config{}
+
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+
+	t.Run("returns trial status for authenticated user", func(t *testing.T) {
+		userID := uuid.New()
+		trialStatus := "active"
+		user := &models.User{ID: userID, TrialStatus: trialStatus}
+
+		mockAuthService.On("GetMe", mock.Anything, userID).Return(user, nil).Once()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me/trial-status", nil)
+		req = withUserID(req, &userID)
+		rr := httptest.NewRecorder()
+
+		r := chi.NewRouter()
+		r.Get("/api/v1/auth/me/trial-status", handler.GetTrialStatus)
+		r.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var responseBody map[string]interface{}
+		json.NewDecoder(rr.Body).Decode(&responseBody)
+		data := responseBody["data"].(map[string]interface{})
+		assert.Equal(t, "active", data["trial_status"])
+
+		mockAuthService.AssertExpectations(t)
+	})
+
+	t.Run("returns 401 when unauthenticated", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me/trial-status", nil)
+		rr := httptest.NewRecorder()
+
+		r := chi.NewRouter()
+		r.Get("/api/v1/auth/me/trial-status", handler.GetTrialStatus)
+		r.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("returns 401 when user not found", func(t *testing.T) {
+		userID := uuid.New()
+
+		mockAuthService.On("GetMe", mock.Anything, userID).Return(nil, fmt.Errorf("not found")).Once()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me/trial-status", nil)
+		req = withUserID(req, &userID)
+		rr := httptest.NewRecorder()
+
+		r := chi.NewRouter()
+		r.Get("/api/v1/auth/me/trial-status", handler.GetTrialStatus)
+		r.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		mockAuthService.AssertExpectations(t)
 	})
 }
 
