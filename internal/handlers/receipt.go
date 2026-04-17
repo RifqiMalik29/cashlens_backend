@@ -28,18 +28,27 @@ type ReceiptHandler struct {
 	categoryRepo   repository.CategoryRepository
 }
 
-func NewReceiptHandler(geminiAPIKey, geminiModel string, quotaService service.QuotaService, categoryRepo repository.CategoryRepository) *ReceiptHandler {
-	return &ReceiptHandler{
-		geminiAPIKey: geminiAPIKey,
-		geminiModel:  geminiModel,
-		fallbackModels: []string{
-			"gemini-3-flash-preview",
+func NewReceiptHandler(geminiAPIKey, geminiModel, environment string, quotaService service.QuotaService, categoryRepo repository.CategoryRepository) *ReceiptHandler {
+	fallbackModels := []string{
+		"gemini-3-flash-preview",
+		"gemini-2.5-flash",
+		"gemini-2.0-flash",
+		"gemini-2.5-pro",
+	}
+	if environment == "development" {
+		fallbackModels = []string{
 			"gemini-2.5-flash",
-			"gemini-2.0-flash",
-			"gemini-2.5-pro",
-		},
-		quotaService: quotaService,
-		categoryRepo: categoryRepo,
+			"gemini-3-flash-preview",
+			"gemini-2.5-flash-lite",
+		}
+	}
+
+	return &ReceiptHandler{
+		geminiAPIKey:   geminiAPIKey,
+		geminiModel:    geminiModel,
+		fallbackModels: fallbackModels,
+		quotaService:   quotaService,
+		categoryRepo:   categoryRepo,
 	}
 }
 
