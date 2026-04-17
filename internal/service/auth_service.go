@@ -40,12 +40,13 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepo               repository.UserRepository
-	categorySeedingService CategorySeedingService
-	chatRepo               repository.ChatLinkRepository
-	mailer                 mailer.Mailer
-	jwtSecret              string
-	jwtExpiration          time.Duration
+	userRepo                repository.UserRepository
+	categorySeedingService  CategorySeedingService
+	chatRepo                repository.ChatLinkRepository
+	mailer                  mailer.Mailer
+	jwtSecret               string
+	jwtExpiration           time.Duration
+	trialEligibilityService TrialEligibilityService // Change to interface type
 }
 
 func NewAuthService(
@@ -55,14 +56,16 @@ func NewAuthService(
 	mailer mailer.Mailer,
 	jwtSecret string,
 	jwtExpiration time.Duration,
+	trialEligibilityService TrialEligibilityService, // Change to interface type
 ) AuthService {
 	return &authService{
-		userRepo:               userRepo,
-		categorySeedingService: categorySeedingService,
-		chatRepo:               chatRepo,
-		mailer:                 mailer,
-		jwtSecret:              jwtSecret,
-		jwtExpiration:          jwtExpiration,
+		userRepo:                userRepo,
+		categorySeedingService:  categorySeedingService,
+		chatRepo:                chatRepo,
+		mailer:                  mailer,
+		jwtSecret:               jwtSecret,
+		jwtExpiration:           jwtExpiration,
+		trialEligibilityService: trialEligibilityService, // Assign new parameter
 	}
 }
 
@@ -110,6 +113,14 @@ func (s *authService) Register(ctx context.Context, req models.CreateUserRequest
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
+	// Determine and set trial status
+	_, err = s.trialEligibilityService.CheckAndSetTrial(user, req.DeviceID)
+	if err != nil {
+		slog.Error("Failed to check and set trial status for new user", "user_id", user.ID, "error", err)
+		// Do not return error, proceed with user creation but without trial if failed.
+		// Or we can decide to rollback user creation. For now, we'll proceed.
+	}
+
 	// Seed default categories
 	if err := s.categorySeedingService.SeedDefaultCategories(ctx, user.ID); err != nil {
 		slog.Error("Failed to seed categories for new user", "user_id", user.ID, "error", err)
@@ -150,6 +161,17 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 			slog.Error("Failed to resend OTP on login", "email", user.Email, "error", err)
 		}
 		return nil, &ErrEmailNotConfirmed{Email: user.Email}
+	}
+
+	// Update device ID and re-evaluate trial status on login
+	if req.DeviceID != nil && (user.DeviceID == nil || *user.DeviceID != *req.DeviceID) {
+		// Only call if a new device ID is provided or existing one is different
+		// Or if trial status needs re-evaluation (e.g., from inactive)
+		_, err = s.trialEligibilityService.CheckAndSetTrial(user, req.DeviceID)
+		if err != nil {
+			slog.Error("Failed to check and set trial status for logging in user", "user_id", user.ID, "error", err)
+			// Proceed with login even if trial update fails
+		}
 	}
 
 	// Generate JWT
