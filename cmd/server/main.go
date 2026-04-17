@@ -132,7 +132,7 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
-	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, cfg.GeminiAPI.ScanningModel, quotaService, categoryRepo)
+	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, cfg.GeminiAPI.ScanningModel, cfg.Server.Environment, quotaService, categoryRepo)
 	subscriptionHandler := handlers.NewSubscriptionHandler(
 		quotaService,
 		userRepo,
@@ -150,6 +150,7 @@ func main() {
 			cfg.Telegram.BotToken,
 			cfg.GeminiAPI.APIKey,
 			cfg.GeminiAPI.TelegramModel,
+			cfg.GeminiAPI.TelegramFallbackModels,
 			draftService,
 			transactionService,
 			budgetService,

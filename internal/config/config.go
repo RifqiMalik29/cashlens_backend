@@ -72,6 +72,7 @@ type Gemini struct {
 	APIKey        string
 	ScanningModel string
 	TelegramModel string
+	TelegramFallbackModels []string
 }
 
 type Telegram struct {
@@ -111,8 +112,9 @@ func Load() (*Config, error) {
 		},
 		GeminiAPI: Gemini{
 			APIKey:        os.Getenv("GEMINI_API_KEY"),
-			ScanningModel: getEnv("SCANNING_AI", "gemini-1.5-flash"),
-			TelegramModel: getEnv("TELEGRAM_AI", "gemini-1.5-flash"),
+			ScanningModel: getEnv("SCANNING_AI", "gemini-2.5-flash"),
+			TelegramModel: getEnv("TELEGRAM_AI", "gemini-2.5-flash"),
+			TelegramFallbackModels: []string{},
 		},
 		Telegram: Telegram{
 			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
