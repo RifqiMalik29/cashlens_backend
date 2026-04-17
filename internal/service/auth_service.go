@@ -46,7 +46,7 @@ type authService struct {
 	mailer                 mailer.Mailer
 	jwtSecret              string
 	jwtExpiration          time.Duration
-	trialEligibilityService *TrialEligibilityService // New field
+	trialEligibilityService TrialEligibilityService // Change to interface type
 }
 
 func NewAuthService(
@@ -56,7 +56,7 @@ func NewAuthService(
 	mailer mailer.Mailer,
 	jwtSecret string,
 	jwtExpiration time.Duration,
-	trialEligibilityService *TrialEligibilityService, // New parameter
+	trialEligibilityService TrialEligibilityService, // Change to interface type
 ) AuthService {
 	return &authService{
 		userRepo:               userRepo,
