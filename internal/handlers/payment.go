@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"cashlens/internal/config"
-	"cashlens/internal/logger"
-	"cashlens/internal/middleware"
-	"cashlens/internal/pkg/validator"
-	"cashlens/internal/service"
+	"github.com/rifqimalik/cashlens-backend/internal/config"
+	"github.com/rifqimalik/cashlens-backend/internal/logger"
+	"github.com/rifqimalik/cashlens-backend/internal/middleware"
+	"github.com/rifqimalik/cashlens-backend/internal/pkg/validator"
+	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -57,7 +57,7 @@ func (h *PaymentHandler) CreatePaymentSession(w http.ResponseWriter, r *http.Req
 
 	var req CreatePaymentSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Errorf("Failed to decode create payment session request: %v", err)
+		h.logger.Error("Failed to decode create payment session request", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
@@ -66,7 +66,7 @@ func (h *PaymentHandler) CreatePaymentSession(w http.ResponseWriter, r *http.Req
 
 	// Validate request
 	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
-		h.logger.Warnf("Validation failed for create payment session request: %v", validationErrors)
+		h.logger.Warn("Validation failed for create payment session request", "errors", validationErrors)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{
@@ -79,7 +79,7 @@ func (h *PaymentHandler) CreatePaymentSession(w http.ResponseWriter, r *http.Req
 	// Retrieve user details from AuthService for Xendit customer info
 	user, err := h.authService.GetMe(r.Context(), *userID)
 	if err != nil {
-		h.logger.Errorf("Failed to get user details for userID %s: %v", userID.String(), err)
+		h.logger.Error("Failed to get user details", "userID", userID.String(), "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized) // User not found, likely invalid token
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "User not found or unauthorized"})
@@ -103,7 +103,7 @@ func (h *PaymentHandler) CreatePaymentSession(w http.ResponseWriter, r *http.Req
 
 	paymentSessionResult, err := h.paymentService.CreatePaymentSession(r.Context(), params)
 	if err != nil {
-		h.logger.Errorf("Failed to create Xendit payment session for user %s: %v", userID.String(), err)
+		h.logger.Error("Failed to create Xendit payment session", "userID", userID.String(), "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to initiate payment. Please try again."})
