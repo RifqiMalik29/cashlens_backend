@@ -11,6 +11,9 @@ dist/
 .env
 .env.local
 
+# Claude MCP config (contains secrets)
+.claude/mcp.json
+
 # IDE
 .vscode/
 .idea/
