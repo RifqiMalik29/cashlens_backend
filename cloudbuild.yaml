@@ -39,3 +39,6 @@ substitutions:
   _REGION: us-central1
   _REPOSITORY: cashlens-repo
   _SERVICE_NAME: cashlens-backend
+
+options:
+  logging: CLOUD_LOGGING_ONLY
