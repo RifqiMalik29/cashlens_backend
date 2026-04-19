@@ -111,6 +111,7 @@ func main() {
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
 
 	mailerService := mailer.NewMailer(cfg.Mail)
+	trialExpiryService := service.NewTrialExpiryService(userRepo, mailerService)
 	trialEligibilityService := service.NewTrialEligibilityService(userRepo)
 	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration, trialEligibilityService)
 	refreshTokenService := service.NewRefreshTokenService(
@@ -234,6 +235,18 @@ func main() {
 			}
 		}
 	}()
+
+	// Start trial expiry scheduler (runs hourly)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := trialExpiryService.ExpireTrials(context.Background()); err != nil {
+				log.Error("Trial expiry cron failed", "error", err)
+			}
+		}
+	}()
+	log.Info("Trial expiry scheduler started")
 
 	// Setup router
 	r := chi.NewRouter()
