@@ -94,6 +94,14 @@ func (m *MockUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) GetExpiredTrialUsers(ctx context.Context) ([]*models.User, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.User), args.Error(1)
+}
+
 // MockTrialEligibilityService is a mock implementation of TrialEligibilityService.
 type MockTrialEligibilityService struct {
 	mock.Mock
