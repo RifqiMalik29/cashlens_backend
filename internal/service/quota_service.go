@@ -35,18 +35,19 @@ func (s *quotaService) CheckAndIncrementTransactionQuota(ctx context.Context, us
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
+	now := time.Now()
+
 	// Premium users with active subscription have unlimited access
 	if user.SubscriptionTier == "premium" &&
-		(user.SubscriptionExpiry == nil || user.SubscriptionExpiry.After(time.Now())) {
+		(user.SubscriptionExpiry == nil || user.SubscriptionExpiry.After(now)) {
 		return nil
 	}
 
 	// Active trial = full premium access
-	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(time.Now()) {
+	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(now) {
 		return nil
 	}
 
-	now := time.Now()
 	month, year := int(now.Month()), now.Year()
 
 	// Atomic check + increment: prevents TOCTOU race condition
@@ -77,18 +78,19 @@ func (s *quotaService) CheckAndIncrementScanQuota(ctx context.Context, userID uu
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 
+	now := time.Now()
+
 	// Premium users with active subscription have unlimited access
 	if user.SubscriptionTier == "premium" &&
-		(user.SubscriptionExpiry == nil || user.SubscriptionExpiry.After(time.Now())) {
+		(user.SubscriptionExpiry == nil || user.SubscriptionExpiry.After(now)) {
 		return nil
 	}
 
 	// Active trial = full premium access
-	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(time.Now()) {
+	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(now) {
 		return nil
 	}
 
-	now := time.Now()
 	month, year := int(now.Month()), now.Year()
 
 	// Atomic check + increment: prevents TOCTOU race condition

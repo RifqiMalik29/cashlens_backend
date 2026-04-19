@@ -130,15 +130,6 @@ func (m *MockUserRepoForQuota) GetExpiredTrialUsers(ctx context.Context) ([]*mod
 	return args.Get(0).([]*models.User), args.Error(1)
 }
 
-// FindUnconfirmedUsersOlderThan retrieves unconfirmed users older than a specified duration.
-func (m *MockUserRepoForQuota) FindUnconfirmedUsersOlderThan(ctx context.Context, duration time.Duration) ([]models.User, error) {
-	args := m.Called(ctx, duration)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]models.User), args.Error(1)
-}
-
 func TestQuotaService_ActiveTrial_BypassesTransactionLimit(t *testing.T) {
 	quotaRepo := new(MockQuotaRepo)
 	userRepo := new(MockUserRepoForQuota)
@@ -152,12 +143,12 @@ func TestQuotaService_ActiveTrial_BypassesTransactionLimit(t *testing.T) {
 		TrialEndAt:       &trialEnd,
 	}
 	userRepo.On("GetByID", mock.Anything, userID).Return(user, nil)
-	quotaRepo.AssertNotCalled(t, "IncrementTransactionsIfUnderLimit")
 
 	svc := service.NewQuotaService(quotaRepo, userRepo)
 	err := svc.CheckAndIncrementTransactionQuota(context.Background(), userID)
 
 	assert.NoError(t, err)
+	quotaRepo.AssertNotCalled(t, "IncrementTransactionsIfUnderLimit")
 	userRepo.AssertExpectations(t)
 }
 
@@ -196,12 +187,12 @@ func TestQuotaService_ActiveTrial_BypassesScanLimit(t *testing.T) {
 		TrialEndAt:       &trialEnd,
 	}
 	userRepo.On("GetByID", mock.Anything, userID).Return(user, nil)
-	quotaRepo.AssertNotCalled(t, "IncrementScansIfUnderLimit")
 
 	svc := service.NewQuotaService(quotaRepo, userRepo)
 	err := svc.CheckAndIncrementScanQuota(context.Background(), userID)
 
 	assert.NoError(t, err)
+	quotaRepo.AssertNotCalled(t, "IncrementScansIfUnderLimit")
 	userRepo.AssertExpectations(t)
 }
 
