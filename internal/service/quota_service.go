@@ -41,6 +41,11 @@ func (s *quotaService) CheckAndIncrementTransactionQuota(ctx context.Context, us
 		return nil
 	}
 
+	// Active trial = full premium access
+	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(time.Now()) {
+		return nil
+	}
+
 	now := time.Now()
 	month, year := int(now.Month()), now.Year()
 
@@ -75,6 +80,11 @@ func (s *quotaService) CheckAndIncrementScanQuota(ctx context.Context, userID uu
 	// Premium users with active subscription have unlimited access
 	if user.SubscriptionTier == "premium" &&
 		(user.SubscriptionExpiry == nil || user.SubscriptionExpiry.After(time.Now())) {
+		return nil
+	}
+
+	// Active trial = full premium access
+	if user.TrialStatus == "active" && user.TrialEndAt != nil && user.TrialEndAt.After(time.Now()) {
 		return nil
 	}
 
