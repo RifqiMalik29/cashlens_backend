@@ -132,6 +132,11 @@ func (m *MockMailer) SendConfirmationEmail(to, token string) error {
 	return args.Error(0)
 }
 
+func (m *MockMailer) SendTrialExpiredEmail(to string) error {
+	args := m.Called(to)
+	return args.Error(0)
+}
+
 func TestAuthService_Register_WithTrial(t *testing.T) {
 	ctx := context.Background()
 	email := "newuser@example.com"
