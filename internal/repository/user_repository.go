@@ -26,6 +26,7 @@ type UserRepository interface {
 	UpdateConfirmationStatus(ctx context.Context, userID uuid.UUID, isConfirmed bool) error
 	UpdateConfirmationToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	GetExpiredTrialUsers(ctx context.Context) ([]*models.User, error)
 }
 
 type userRepository struct {
@@ -253,6 +254,39 @@ func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
+}
+
+func (r *userRepository) GetExpiredTrialUsers(ctx context.Context) ([]*models.User, error) {
+	query := `
+		SELECT id, email, password_hash, name, language, COALESCE(expo_push_token, ''), subscription_tier, subscription_expires_at, is_founder, is_confirmed, confirmation_token, confirmation_expires_at, device_id, trial_start_at, trial_end_at, trial_status, created_at, updated_at
+		FROM users
+		WHERE trial_status = 'active' AND trial_end_at < NOW()
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expired trial users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		user := &models.User{}
+		err := rows.Scan(
+			&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Language, &user.ExpoPushToken,
+			&user.SubscriptionTier, &user.SubscriptionExpiry, &user.IsFounder,
+			&user.IsConfirmed, &user.ConfirmationToken, &user.ConfirmationExpiresAt,
+			&user.DeviceID, &user.TrialStartAt, &user.TrialEndAt, &user.TrialStatus,
+			&user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan expired trial user: %w", err)
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error scanning expired trial users: %w", err)
+	}
+	return users, nil
 }
 
 func (r *userRepository) FindUnconfirmedUsersOlderThan(ctx context.Context, duration time.Duration) ([]models.User, error) {
