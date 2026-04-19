@@ -54,9 +54,10 @@ func TestTrialExpiryService_ExpireTrials_UpdatesStatusAndSendsEmail(t *testing.T
 	mailerMock.On("SendTrialExpiredEmail", "user@example.com").Return(nil)
 
 	svc := service.NewTrialExpiryService(userRepo, mailerMock)
-	err := svc.ExpireTrials(context.Background())
+	count, err := svc.ExpireTrials(context.Background())
 
 	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
 	assert.Equal(t, "expired", user.TrialStatus)
 	userRepo.AssertExpectations(t)
 	mailerMock.AssertExpectations(t)
@@ -69,9 +70,10 @@ func TestTrialExpiryService_ExpireTrials_NoExpiredUsers(t *testing.T) {
 	userRepo.On("GetExpiredTrialUsers", mock.Anything).Return([]*models.User{}, nil)
 
 	svc := service.NewTrialExpiryService(userRepo, mailerMock)
-	err := svc.ExpireTrials(context.Background())
+	count, err := svc.ExpireTrials(context.Background())
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, count)
 	mailerMock.AssertNotCalled(t, "SendTrialExpiredEmail")
 }
 
@@ -89,9 +91,10 @@ func TestTrialExpiryService_ExpireTrials_PerUserErrorDoesNotAbort(t *testing.T) 
 	mailerMock.On("SendTrialExpiredEmail", "b@example.com").Return(nil)
 
 	svc := service.NewTrialExpiryService(userRepo, mailerMock)
-	err := svc.ExpireTrials(context.Background())
+	count, err := svc.ExpireTrials(context.Background())
 
 	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
 	mailerMock.AssertCalled(t, "SendTrialExpiredEmail", "b@example.com")
 	mailerMock.AssertNotCalled(t, "SendTrialExpiredEmail", "a@example.com")
 }

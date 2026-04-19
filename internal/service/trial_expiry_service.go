@@ -9,7 +9,7 @@ import (
 )
 
 type TrialExpiryService interface {
-	ExpireTrials(ctx context.Context) error
+	ExpireTrials(ctx context.Context) (int, error)
 }
 
 // trialUserRepository is the subset of UserRepository needed by TrialExpiryService.
@@ -30,18 +30,21 @@ func NewTrialExpiryService(userRepo trialUserRepository, mailer mailer.Mailer) T
 	}
 }
 
-func (s *trialExpiryService) ExpireTrials(ctx context.Context) error {
+func (s *trialExpiryService) ExpireTrials(ctx context.Context) (int, error) {
 	users, err := s.userRepo.GetExpiredTrialUsers(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
+	count := 0
 	for _, user := range users {
 		if err := s.expireUser(ctx, user); err != nil {
 			slog.Error("Failed to expire trial for user", "user_id", user.ID, "error", err)
+		} else {
+			count++
 		}
 	}
-	return nil
+	return count, nil
 }
 
 func (s *trialExpiryService) expireUser(ctx context.Context, user *models.User) error {

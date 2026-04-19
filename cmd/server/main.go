@@ -241,8 +241,11 @@ func main() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := trialExpiryService.ExpireTrials(context.Background()); err != nil {
+			count, err := trialExpiryService.ExpireTrials(context.Background())
+			if err != nil {
 				log.Error("Trial expiry cron failed", "error", err)
+			} else if count > 0 {
+				log.Info("Trial expiry completed", "users_expired", count)
 			}
 		}
 	}()
