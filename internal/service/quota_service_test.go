@@ -130,6 +130,21 @@ func (m *MockUserRepoForQuota) GetExpiredTrialUsers(ctx context.Context) ([]*mod
 	return args.Get(0).([]*models.User), args.Error(1)
 }
 
+// GetByGoogleID retrieves a user by their Google ID.
+func (m *MockUserRepoForQuota) GetByGoogleID(ctx context.Context, googleID string) (*models.User, error) {
+	args := m.Called(ctx, googleID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.User), args.Error(1)
+}
+
+// UpdateGoogleID updates a user's Google ID.
+func (m *MockUserRepoForQuota) UpdateGoogleID(ctx context.Context, userID uuid.UUID, googleID string) error {
+	args := m.Called(ctx, userID, googleID)
+	return args.Error(0)
+}
+
 func TestQuotaService_ActiveTrial_BypassesTransactionLimit(t *testing.T) {
 	quotaRepo := new(MockQuotaRepo)
 	userRepo := new(MockUserRepoForQuota)
