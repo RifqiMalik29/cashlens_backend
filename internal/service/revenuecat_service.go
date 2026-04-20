@@ -27,7 +27,17 @@ func NewRevenueCatService(userRepo repository.UserRepository, eventRepo reposito
 
 // ProcessWebhook processes a RevenueCat webhook event
 func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.RevenueCatEvent) error {
+	// Add idempotency check here
+	if event.TransactionID != nil && *event.TransactionID != "" {
+		exists, err := s.eventRepo.ExistsByExternalInvoiceID(ctx, *event.TransactionID)
+		if err == nil && exists {
+			slog.Info("RevenueCat event already processed, skipping", "transaction_id", *event.TransactionID)
+			return nil // already processed, skip
+		}
+	}
+
 	userID, err := uuid.Parse(event.AppUserID)
+
 	if err != nil {
 		return fmt.Errorf("failed to parse user ID from webhook: %w", err)
 	}
