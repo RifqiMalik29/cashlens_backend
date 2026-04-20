@@ -133,7 +133,7 @@ func TestAuthHandler_Register(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{} // Use a dummy config
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful registration with device ID", func(t *testing.T) {
 		email := "test@example.com"
@@ -265,7 +265,7 @@ func TestAuthHandler_Login(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful login returns access and refresh token", func(t *testing.T) {
 		email := "test@example.com"
@@ -372,7 +372,7 @@ func TestAuthHandler_ConfirmEmail(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful email confirmation returns 200", func(t *testing.T) {
 		mockAuthService.On("ConfirmEmail", mock.Anything, "test@example.com", "123456").Return(nil).Once()
@@ -420,7 +420,7 @@ func TestAuthHandler_ResendConfirmation(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful resend returns 200", func(t *testing.T) {
 		mockAuthService.On("ResendConfirmation", mock.Anything, "test@example.com").Return(nil).Once()
@@ -474,7 +474,7 @@ func TestAuthHandler_GetMe(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("returns user when authenticated", func(t *testing.T) {
 		userID := uuid.New()
@@ -534,7 +534,7 @@ func TestAuthHandler_Logout(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful logout returns 200", func(t *testing.T) {
 		userID := uuid.New()
@@ -591,7 +591,7 @@ func TestAuthHandler_Refresh(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful refresh returns new tokens", func(t *testing.T) {
 		refreshRes := &models.RefreshTokenResponse{AccessToken: "new_access", RefreshToken: "new_refresh"}
@@ -643,7 +643,7 @@ func TestAuthHandler_GetTrialStatus(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("returns trial status for authenticated user", func(t *testing.T) {
 		userID := uuid.New()
@@ -703,7 +703,7 @@ func TestAuthHandler_DeleteMe(t *testing.T) {
 	mockRefreshTokenService := new(MockRefreshTokenService)
 	cfg := &config.Config{}
 
-	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, cfg)
+	handler := handlers.NewAuthHandler(mockAuthService, mockRefreshTokenService, nil, cfg)
 
 	t.Run("successful account deletion returns 200", func(t *testing.T) {
 		userID := uuid.New()
