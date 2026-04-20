@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 )
@@ -12,6 +14,7 @@ import (
 type SubscriptionEventRepository interface {
 	Create(ctx context.Context, event *models.SubscriptionEvent) error
 	ExistsByExternalInvoiceID(ctx context.Context, externalInvoiceID string) (bool, error)
+	GetLatestEventTimestampForUser(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 type subscriptionEventRepository struct {
@@ -47,6 +50,19 @@ func (r *subscriptionEventRepository) ExistsByExternalInvoiceID(ctx context.Cont
 		return false, fmt.Errorf("failed to check subscription event existence: %w", err)
 	}
 	return exists, nil
+}
+
+func (r *subscriptionEventRepository) GetLatestEventTimestampForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	query := `SELECT event_timestamp_ms FROM subscription_events WHERE user_id = $1 ORDER BY event_timestamp_ms DESC LIMIT 1`
+	var timestamp int64
+	err := r.pool.QueryRow(ctx, query, userID).Scan(&timestamp)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return 0, nil // No events found, which is fine
+		}
+		return 0, fmt.Errorf("failed to get latest event timestamp for user %s: %w", userID, err)
+	}
+	return timestamp, nil
 }
 
 

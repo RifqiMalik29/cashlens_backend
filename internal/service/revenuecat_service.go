@@ -42,6 +42,20 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 		return fmt.Errorf("failed to parse user ID from webhook: %w", err)
 	}
 
+	// Add timestamp ordering check here
+	latestTimestamp, err := s.eventRepo.GetLatestEventTimestampForUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get latest event timestamp: %w", err)
+	}
+
+	if event.EventTimestampMS < latestTimestamp {
+		slog.Info("Received stale RevenueCat event, skipping",
+			"user_id", userID,
+			"event_timestamp_ms", event.EventTimestampMS,
+			"latest_timestamp_ms", latestTimestamp)
+		return nil // Skip stale event
+	}
+
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user for webhook processing: %w", err)
