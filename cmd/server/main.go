@@ -20,7 +20,7 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/revenuecat"
+
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"

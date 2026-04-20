@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"crypto/subtle"
+
 	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
@@ -51,7 +53,7 @@ func (h *RevenueCatHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	if token != h.config.Payment.RevenueCatWebhookSecret {
+	if subtle.ConstantTimeCompare([]byte(token), []byte(h.config.Payment.RevenueCatWebhookSecret)) != 1 {
 		h.logger.Error("RevenueCat webhook received with invalid secret token")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +65,11 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 		// The subscription is still valid until the expiration date.
 		// We can simply log this event. The `EXPIRATION` event will handle the downgrade.
 		// If the cancellation is for a reason that requires immediate revocation, handle it here.
-		if event.CancelReason == "CUSTOMER_SERVICE" || event.CancelReason == "BILLING_ERROR" {
+		cancelReason := ""
+		if event.CancelReason != nil {
+			cancelReason = *event.CancelReason
+		}
+		if cancelReason == "CUSTOMER_SERVICE" || cancelReason == "BILLING_ERROR" {
 			user.SubscriptionTier = "free"
 			user.SubscriptionExpiry = nil // Revoke immediately
 			if err := s.userRepo.Update(ctx, user); err != nil {
@@ -81,8 +86,7 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 
 	case "TEST":
 		// This is a test event from RevenueCat, log it and do nothing.
-		fmt.Printf("Received RevenueCat test event for user %s
-", userID)
+		slog.Info("Received RevenueCat test event", "user_id", userID)
 		return nil
 	}
 
@@ -91,10 +95,10 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 		ID:                uuid.New(),
 		UserID:            userID,
 		EventType:         event.Type,
-		Plan:              safeString(event.ProductID),
-		PricePaid:         safeFloat64(event.Price),
-		ExternalInvoiceID: safeString(event.TransactionID), // Using TransactionID as the unique identifier
-		CancelReason:      safeString(event.CancelReason),
+		Plan:              safeStringPtr(event.ProductID),
+		PricePaid:         safeFloat64Ptr(event.Price),
+		ExternalInvoiceID: safeStringPtr(event.TransactionID), // Using TransactionID as the unique identifier
+		CancelReason:      safeStringPtr(event.CancelReason),
 		CreatedAt:         time.Now().UTC(),
 	}
 
@@ -105,18 +109,18 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 	return nil
 }
 
-// safeString is a helper to dereference a string pointer or return an empty string
-func safeString(p *string) string {
+// safeStringPtr is a helper to return a string pointer or nil
+func safeStringPtr(p *string) *string {
 	if p == nil {
-		return ""
+		return nil
 	}
-	return *p
+	return p
 }
 
-// safeFloat64 is a helper to dereference a float64 pointer or return 0
-func safeFloat64(p *float64) float64 {
+// safeFloat64Ptr is a helper to return a float64 pointer or nil
+func safeFloat64Ptr(p *float64) *float64 {
 	if p == nil {
-		return 0
+		return nil
 	}
-	return *p
+	return p
 }
