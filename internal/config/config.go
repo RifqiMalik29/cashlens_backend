@@ -81,8 +81,8 @@ type Telegram struct {
 }
 
 type Payment struct {
-	XenditWebhookToken string
-	XenditSecretKey    string
+	RevenueCatAPIKey        string
+	RevenueCatWebhookSecret string
 }
 
 type GoogleConfig struct {
@@ -125,8 +125,8 @@ func Load() (*Config, error) {
 			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		},
 		Payment: Payment{
-			XenditWebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
-			XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
+			RevenueCatAPIKey:        os.Getenv("REVENUECAT_API_KEY"),
+			RevenueCatWebhookSecret: os.Getenv("REVENUECAT_WEBHOOK_SECRET"),
 		},
 		Google: GoogleConfig{
 			ClientID: os.Getenv("GOOGLE_CLIENT_ID"),
