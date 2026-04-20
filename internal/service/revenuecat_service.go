@@ -79,7 +79,7 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 		if event.CancelReason != nil {
 			cancelReason = *event.CancelReason
 		}
-		if cancelReason == "CUSTOMER_SERVICE" || cancelReason == "BILLING_ERROR" {
+		if cancelReason == "CUSTOMER_SUPPORT" || cancelReason == "BILLING_ERROR" || cancelReason == "DEVELOPER_INITIATED" {
 			user.SubscriptionTier = "free"
 			user.SubscriptionExpiry = nil // Revoke immediately
 			if err := s.userRepo.Update(ctx, user); err != nil {
