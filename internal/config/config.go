@@ -165,6 +165,12 @@ func (c *Config) Validate() error {
 	if c.Server.Environment == "production" && c.Google.ClientID == "" {
 		return fmt.Errorf("GOOGLE_CLIENT_ID is required in production")
 	}
+	if c.Server.Environment == "production" && c.Payment.RevenueCatWebhookSecret == "" {
+		return fmt.Errorf("REVENUECAT_WEBHOOK_SECRET is required in production")
+	}
+	if c.Server.Environment == "production" && c.Payment.RevenueCatAPIKey == "" {
+		return fmt.Errorf("REVENUECAT_API_KEY is required in production")
+	}
 	return nil
 }
 
