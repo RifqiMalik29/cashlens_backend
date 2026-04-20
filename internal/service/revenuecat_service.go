@@ -94,6 +94,32 @@ func (s *RevenueCatService) ProcessWebhook(ctx context.Context, event *models.Re
 			return fmt.Errorf("failed to downgrade user subscription on expiration: %w", err)
 		}
 
+	case "BILLING_ISSUE":
+		slog.Warn("Billing issue for user", "user_id", userID, "product_id", safeStringPtr(event.ProductID))
+		// Optionally flag the user or send notification, but don't downgrade yet
+		// RevenueCat will send EXPIRATION if billing ultimately fails
+		return nil
+
+	case "TRANSFER":
+		slog.Warn("Subscription transferred", "user_id", userID, "event", event.Type)
+		// Downgrade old user — the new user will get INITIAL_PURCHASE
+		user.SubscriptionTier = "free"
+		user.SubscriptionExpiry = nil
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			return fmt.Errorf("failed to downgrade old user on TRANSFER: %w", err)
+		}
+		return nil
+
+	case "NON_RENEWING_PURCHASE":
+		slog.Info("Non-renewing purchase", "user_id", userID)
+		// Handle like INITIAL_PURCHASE if applicable - for now just log
+		return nil
+
+	case "SUBSCRIBER_ALIAS":
+		slog.Info("Subscriber alias event", "user_id", userID)
+		// Usually no action needed
+		return nil
+
 	case "TEST":
 		// This is a test event from RevenueCat, log it and do nothing.
 		slog.Info("Received RevenueCat test event", "user_id", userID)
