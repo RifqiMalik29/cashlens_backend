@@ -18,6 +18,7 @@ type Config struct {
 	GeminiAPI  Gemini
 	Telegram   Telegram
 	Payment    Payment
+	Google     GoogleConfig
 	Mail       MailConfig
 	Monitoring Monitoring
 	CORS       CORSConfig
@@ -84,6 +85,10 @@ type Payment struct {
 	XenditSecretKey    string
 }
 
+type GoogleConfig struct {
+	ClientID string
+}
+
 func Load() (*Config, error) {
 	// Load .env file (ignore error if not found)
 	_ = godotenv.Load()
@@ -122,6 +127,9 @@ func Load() (*Config, error) {
 		Payment: Payment{
 			XenditWebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
 			XenditSecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
+		},
+		Google: GoogleConfig{
+			ClientID: os.Getenv("GOOGLE_CLIENT_ID"),
 		},
 		Mail: MailConfig{
 			Host:           getEnv("SMTP_HOST", "localhost"),

@@ -21,6 +21,8 @@ type User struct {
 	SubscriptionTier      string     `json:"subscription_tier"`                 // From current UserRepository
 	SubscriptionExpiry    *time.Time `json:"subscription_expires_at,omitempty"` // From current UserRepository, nullable
 	IsFounder             bool       `json:"is_founder"`                        // From current UserRepository
+	GoogleID              *string    `json:"google_id,omitempty"`
+	AuthProvider          string     `json:"auth_provider"`
 	IsConfirmed           bool       `json:"is_confirmed"`                      // From current UserRepository
 	ConfirmationToken     *string    `json:"-"`                                 // From current UserRepository, nullable
 	ConfirmationExpiresAt *time.Time `json:"-"`                                 // From current UserRepository, nullable
@@ -52,6 +54,11 @@ type LoginRequest struct {
 	Email    string  `json:"email" validate:"required,email"`
 	Password string  `json:"password" validate:"required"`
 	DeviceID *string `json:"device_id,omitempty"` // New: Optional device ID from frontend
+}
+
+type GoogleLoginRequest struct {
+	IDToken  string  `json:"id_token" validate:"required"`
+	DeviceID *string `json:"device_id,omitempty"`
 }
 
 type AuthResponse struct {
