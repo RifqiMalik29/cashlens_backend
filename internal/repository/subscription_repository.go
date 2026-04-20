@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
 )
@@ -41,7 +40,7 @@ func (r *subscriptionEventRepository) Create(ctx context.Context, event *models.
 func (r *subscriptionEventRepository) ExistsByExternalInvoiceID(ctx context.Context, externalInvoiceID string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx, `
-		SELECT EXISTS(SELECT 1 FROM subscription_events WHERE external_invoice_id = $1 AND event_type = 'subscribed')
+		SELECT EXISTS(SELECT 1 FROM subscription_events WHERE external_invoice_id = $1)
 	`, externalInvoiceID).Scan(&exists)
 
 	if err != nil {
