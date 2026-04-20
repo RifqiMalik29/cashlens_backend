@@ -18,16 +18,4 @@ type SubscriptionEvent struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
-// PendingInvoice tracks invoices waiting for payment confirmation
-type PendingInvoice struct {
-	ID                uuid.UUID `json:"id"`
-	UserID            uuid.UUID `json:"user_id"`
-	ExternalInvoiceID string    `json:"external_invoice_id"`
-	XenditInvoiceID   string    `json:"xendit_invoice_id"` // Xendit's internal invoice ID
-	Plan              string    `json:"plan"`
-	Amount            float64   `json:"amount"`
-	Status            string    `json:"status"` // pending, paid, expired, failed
-	ExpiresAt         time.Time `json:"expires_at"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
+
