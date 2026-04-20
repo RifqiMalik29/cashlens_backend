@@ -16,13 +16,15 @@ import (
 type AuthHandler struct {
 	authService         service.AuthService
 	refreshTokenService service.RefreshTokenService
+	googleAuthService   service.GoogleAuthService
 	config              *config.Config
 }
 
-func NewAuthHandler(authService service.AuthService, refreshTokenService service.RefreshTokenService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, refreshTokenService service.RefreshTokenService, googleAuthService service.GoogleAuthService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		authService:         authService,
 		refreshTokenService: refreshTokenService,
+		googleAuthService:   googleAuthService,
 		config:              cfg,
 	}
 }
@@ -427,4 +429,45 @@ func (h *AuthHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": "Account and all associated data have been permanently deleted.",
 	})
+}
+
+func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	var req models.GoogleLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
+		return
+	}
+
+	if validationErrors := validator.ValidateStruct(&req); validationErrors != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Validation failed", Details: validationErrors})
+		return
+	}
+
+	res, err := h.googleAuthService.LoginWithGoogle(r.Context(), req.IDToken, req.DeviceID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		msg := err.Error()
+		switch msg {
+		case "invalid Google token", "Google account has no email":
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: msg})
+		default:
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to verify Google token"})
+		}
+		return
+	}
+
+	refreshToken, _ := h.refreshTokenService.GenerateRefreshToken(r.Context(), res.User.ID, r.RemoteAddr, r.UserAgent())
+	if refreshToken != nil {
+		res.RefreshToken = refreshToken.Token
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{"data": res})
 }

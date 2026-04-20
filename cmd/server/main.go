@@ -114,6 +114,15 @@ func main() {
 	trialExpiryService := service.NewTrialExpiryService(userRepo, mailerService)
 	trialEligibilityService := service.NewTrialEligibilityService(userRepo)
 	authService := service.NewAuthService(userRepo, categorySeedingService, chatRepo, mailerService, cfg.JWT.Secret, cfg.JWT.Expiration, trialEligibilityService)
+	googleAuthService := service.NewGoogleAuthService(
+		userRepo,
+		categorySeedingService,
+		trialEligibilityService,
+		cfg.JWT.Secret,
+		cfg.JWT.Expiration,
+		"https://oauth2.googleapis.com",
+		cfg.Google.ClientID,
+	)
 	refreshTokenService := service.NewRefreshTokenService(
 		refreshTokenRepo,
 		userRepo,
@@ -130,7 +139,7 @@ func main() {
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
-	authHandler := handlers.NewAuthHandler(authService, refreshTokenService, cfg)
+	authHandler := handlers.NewAuthHandler(authService, refreshTokenService, googleAuthService, cfg)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
@@ -295,6 +304,7 @@ func main() {
 			r.Post("/auth/refresh", authHandler.Refresh)
 			r.Post("/auth/confirm", authHandler.ConfirmEmail)
 			r.Post("/auth/resend-confirmation", authHandler.ResendConfirmation)
+			r.Post("/auth/google", authHandler.GoogleLogin)
 		})
 
 		// Protected routes (standard rate limiting)
