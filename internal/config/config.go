@@ -162,6 +162,9 @@ func (c *Config) Validate() error {
 	if c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
 	}
+	if c.Server.Environment == "production" && c.Google.ClientID == "" {
+		return fmt.Errorf("GOOGLE_CLIENT_ID is required in production")
+	}
 	return nil
 }
 

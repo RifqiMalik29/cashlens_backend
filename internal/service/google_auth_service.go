@@ -84,6 +84,10 @@ func (s *googleAuthService) verifyGoogleToken(idToken string) (*googleTokenClaim
 		return nil, fmt.Errorf("invalid Google token")
 	}
 
+	if claims.Sub == "" {
+		return nil, fmt.Errorf("invalid Google token")
+	}
+
 	if claims.Email == "" {
 		return nil, fmt.Errorf("Google account has no email")
 	}
@@ -110,6 +114,8 @@ func (s *googleAuthService) LoginWithGoogle(ctx context.Context, idToken string,
 	// 2. Find by email (auto-merge existing email/password user)
 	user, err = s.userRepo.GetByEmail(ctx, claims.Email)
 	if err == nil {
+		// Link Google ID to existing account. auth_provider remains "email" intentionally —
+		// it reflects the primary signup method, not the current login method.
 		if err := s.userRepo.UpdateGoogleID(ctx, user.ID, claims.Sub); err != nil {
 			return nil, fmt.Errorf("failed to link Google account: %w", err)
 		}
