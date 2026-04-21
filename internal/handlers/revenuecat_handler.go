@@ -1,27 +1,31 @@
 package handlers
 
 import (
+	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
 
-	"crypto/subtle"
-
 	"github.com/rifqimalik/cashlens-backend/internal/config"
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	"github.com/rifqimalik/cashlens-backend/internal/models"
-	"github.com/rifqimalik/cashlens-backend/internal/service"
 )
+
+// RevenueCatProcessor defines the interface for processing RevenueCat webhook events.
+type RevenueCatProcessor interface {
+	ProcessWebhook(ctx context.Context, event *models.RevenueCatEvent) error
+}
 
 // RevenueCatHandler handles incoming webhooks from RevenueCat
 type RevenueCatHandler struct {
-	service *service.RevenueCatService
+	service RevenueCatProcessor
 	config  *config.Config
 	logger  *logger.Logger
 }
 
 // NewRevenueCatHandler creates a new instance of RevenueCatHandler
-func NewRevenueCatHandler(s *service.RevenueCatService, c *config.Config, l *logger.Logger) *RevenueCatHandler {
+func NewRevenueCatHandler(s RevenueCatProcessor, c *config.Config, l *logger.Logger) *RevenueCatHandler {
 	return &RevenueCatHandler{
 		service: s,
 		config:  c,
