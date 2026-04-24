@@ -1,8 +1,13 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -215,4 +220,38 @@ func TestHandleLink_AlreadyLinked(t *testing.T) {
 
 	assert.Equal(t, 2, len(sent.messages))
 	assert.Contains(t, sent.messages[1], "Account Linked")
+}
+
+func TestHandleWebhook_InvalidSecret(t *testing.T) {
+	bot := &BotService{}
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "wrong")
+	w := httptest.NewRecorder()
+
+	bot.HandleWebhook("correct-secret", w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandleWebhook_ValidSecret_CallsHandleUpdate(t *testing.T) {
+	userRepo := &mockUserRepo{}
+	chatRepo := &mockChatRepo{}
+	bot, _ := newBotForTest(userRepo, chatRepo)
+
+	update := Update{
+		UpdateID: 1,
+		Message: &Message{
+			Chat: Chat{ID: 123},
+			Text: "/start",
+		},
+	}
+	body, _ := json.Marshal(update)
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "my-secret")
+	w := httptest.NewRecorder()
+
+	bot.HandleWebhook("my-secret", w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }

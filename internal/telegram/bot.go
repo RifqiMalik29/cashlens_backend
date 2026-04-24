@@ -117,6 +117,27 @@ func (b *BotService) drainPendingUpdates() int64 {
 	}
 }
 
+// HandleWebhook processes a single Telegram update delivered via webhook.
+// secretToken must match the X-Telegram-Bot-Api-Secret-Token header.
+func (b *BotService) HandleWebhook(secretToken string, w http.ResponseWriter, r *http.Request) {
+	if secretToken != "" {
+		got := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+		if got != secretToken {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	var update Update
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	b.handleUpdate(update)
+	w.WriteHeader(http.StatusOK)
+}
+
 func (b *BotService) getUpdates(offset int64, timeout int) ([]Update, error) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=%d", b.botToken, offset, timeout)
 
