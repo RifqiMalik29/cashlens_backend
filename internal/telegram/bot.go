@@ -541,8 +541,7 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 	}
 	categories := filterFixedCategories(allCategories)
 
-	cancelTyping := b.sendTypingLoop(chatID)
-	defer cancelTyping()
+	b.sendReply(chatID, "⏳ Oke, lagi diproses ya...")
 
 	// Parse message with AI
 	parsed, err := b.parseMessageWithAI(text, categories, time.Now().Truncate(24*time.Hour))
