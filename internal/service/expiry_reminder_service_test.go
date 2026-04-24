@@ -39,6 +39,9 @@ func (m *MockChatLinkRepository) GetByChatID(ctx context.Context, chatID string,
 	return nil, nil
 }
 func (m *MockChatLinkRepository) Delete(ctx context.Context, id uuid.UUID) error { return nil }
+func (m *MockChatLinkRepository) Upsert(ctx context.Context, link *models.UserChatLink) error {
+	return nil
+}
 
 func TestExpiryReminderService_RunReminders(t *testing.T) {
 	// Setup mock servers for Telegram and Expo

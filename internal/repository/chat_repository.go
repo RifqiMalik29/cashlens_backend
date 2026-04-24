@@ -11,6 +11,7 @@ import (
 
 type ChatLinkRepository interface {
 	Create(ctx context.Context, link *models.UserChatLink) error
+	Upsert(ctx context.Context, link *models.UserChatLink) error
 	GetByChatID(ctx context.Context, chatID string, platform string) (*models.UserChatLink, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID, platform string) (*models.UserChatLink, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -30,6 +31,24 @@ func (r *chatLinkRepository) Create(ctx context.Context, link *models.UserChatLi
 	_, err := r.db.Exec(ctx, query, link.ID, link.UserID, link.Platform, link.ChatID, link.Username, link.IsActive, link.LinkedAt, link.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create chat link: %w", err)
+	}
+
+	return nil
+}
+
+func (r *chatLinkRepository) Upsert(ctx context.Context, link *models.UserChatLink) error {
+	query := `
+		INSERT INTO user_chat_links (id, user_id, platform, chat_id, username, is_active, linked_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (chat_id, platform) DO UPDATE SET
+			user_id    = EXCLUDED.user_id,
+			username   = EXCLUDED.username,
+			is_active  = TRUE,
+			updated_at = EXCLUDED.updated_at`
+
+	_, err := r.db.Exec(ctx, query, link.ID, link.UserID, link.Platform, link.ChatID, link.Username, link.IsActive, link.LinkedAt, link.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to upsert chat link: %w", err)
 	}
 
 	return nil
