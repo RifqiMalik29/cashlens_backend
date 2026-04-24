@@ -541,6 +541,9 @@ func (b *BotService) handleMessage(chatID int64, text string) {
 	}
 	categories := filterFixedCategories(allCategories)
 
+	cancelTyping := b.sendTypingLoop(chatID)
+	defer cancelTyping()
+
 	// Parse message with AI
 	parsed, err := b.parseMessageWithAI(text, categories, time.Now().Truncate(24*time.Hour))
 	if err != nil {
@@ -1203,6 +1206,40 @@ func (b *BotService) handleUnlink(chatID int64) {
 	b.sendReply(chatID, "✅ Account Unlinked!\n\nYour Telegram account has been disconnected from CashLens.\nSend /link <email> to reconnect.")
 }
 
+// sendTypingLoop fires a "typing" chat action immediately, then re-fires every
+// 4 seconds until the returned cancel func is called (Telegram auto-expires after 5s).
+func (b *BotService) sendTypingLoop(chatID int64) (cancel func()) {
+	done := make(chan struct{})
+
+	send := func() {
+		body, _ := json.Marshal(ChatActionRequest{ChatID: chatID, Action: "typing"})
+		url := fmt.Sprintf("https://api.telegram.org/bot%s/sendChatAction", b.botToken)
+		resp, err := b.httpClient.Post(url, "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			log.Printf("[Telegram Bot] sendChatAction error: %v", err)
+			return
+		}
+		resp.Body.Close()
+	}
+
+	send() // immediate first ping
+
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				send()
+			}
+		}
+	}()
+
+	return func() { close(done) }
+}
+
 func (b *BotService) sendReply(chatID int64, text string) {
 	if b.replySpy != nil {
 		b.replySpy(chatID, text)
@@ -1309,6 +1346,11 @@ type Message struct {
 type Chat struct {
 	ID       int64   `json:"id"`
 	Username *string `json:"username,omitempty"`
+}
+
+type ChatActionRequest struct {
+	ChatID int64  `json:"chat_id"`
+	Action string `json:"action"`
 }
 
 type SendMessageRequest struct {
