@@ -77,7 +77,9 @@ type Gemini struct {
 }
 
 type Telegram struct {
-	BotToken string
+	BotToken      string
+	WebhookSecret string
+	Mode          string
 }
 
 type Payment struct {
@@ -121,9 +123,17 @@ func Load() (*Config, error) {
 			TelegramModel:          getEnv("TELEGRAM_AI", "gemini-2.5-flash"),
 			TelegramFallbackModels: []string{},
 		},
-		Telegram: Telegram{
-			BotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
-		},
+		Telegram: func() Telegram {
+			telegramMode := os.Getenv("TELEGRAM_MODE")
+			if telegramMode == "" {
+				telegramMode = "webhook"
+			}
+			return Telegram{
+				BotToken:      os.Getenv("TELEGRAM_BOT_TOKEN"),
+				WebhookSecret: os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
+				Mode:          telegramMode,
+			}
+		}(),
 		Payment: Payment{
 			RevenueCatAPIKey:        os.Getenv("REVENUECAT_API_KEY"),
 			RevenueCatWebhookSecret: os.Getenv("REVENUECAT_WEBHOOK_SECRET"),
