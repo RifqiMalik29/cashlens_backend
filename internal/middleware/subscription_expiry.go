@@ -21,7 +21,9 @@ func SubscriptionExpiryCheck(userRepo repository.UserRepository, eventRepo repos
 			}
 
 			// Check and auto-downgrade if needed (non-blocking)
-			go func(uid uuid.UUID, ctx context.Context) {
+			go func(uid uuid.UUID) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 				user, err := userRepo.GetByID(ctx, uid)
 				if err != nil {
 					return
@@ -49,7 +51,7 @@ func SubscriptionExpiryCheck(userRepo repository.UserRepository, eventRepo repos
 					}
 					eventRepo.Create(ctx, event)
 				}
-			}(*userID, r.Context())
+			}(*userID)
 
 			next.ServeHTTP(w, r)
 		})

@@ -34,6 +34,8 @@ type BotService struct {
 	chatRepo        repository.ChatLinkRepository
 	categoryRepo    repository.CategoryRepository
 	httpClient      *http.Client
+	// replySpy is set in tests to capture outgoing messages without hitting the Telegram API.
+	replySpy func(chatID int64, text string)
 }
 
 func NewBotService(botToken string, geminiAPIKey string, geminiModel string, fallbackModels []string, draftSvc service.DraftService, transactionSvc service.TransactionService, budgetSvc service.BudgetService, draftRepo repository.DraftRepository, transactionRepo repository.TransactionRepository, budgetRepo repository.BudgetRepository, userRepo repository.UserRepository, chatRepo repository.ChatLinkRepository, categoryRepo repository.CategoryRepository) *BotService {
@@ -58,7 +60,11 @@ func NewBotService(botToken string, geminiAPIKey string, geminiModel string, fal
 // StartPolling begins long polling for updates
 func (b *BotService) StartPolling(ctx context.Context) {
 	log.Println("[Telegram Bot] Starting polling...")
-	offset := int64(0)
+
+	// Drain any pending updates accumulated while the bot was offline so we
+	// don't replay old messages (e.g. /link from a previous session).
+	offset := b.drainPendingUpdates()
+	log.Printf("[Telegram Bot] Drained pending updates, starting at offset %d", offset)
 
 	for {
 		select {
@@ -86,6 +92,27 @@ func (b *BotService) StartPolling(ctx context.Context) {
 					b.handleUpdate(update)
 				}
 			}()
+		}
+	}
+}
+
+// drainPendingUpdates fetches all queued updates without blocking (timeout=0)
+// and returns the offset to start processing from, skipping stale messages.
+func (b *BotService) drainPendingUpdates() int64 {
+	offset := int64(0)
+	for {
+		updates, err := b.getUpdates(offset, 0)
+		if err != nil {
+			log.Printf("[Telegram Bot] Error draining updates: %v", err)
+			return offset
+		}
+		if len(updates) == 0 {
+			return offset
+		}
+		for _, u := range updates {
+			if u.UpdateID+1 > offset {
+				offset = u.UpdateID + 1
+			}
 		}
 	}
 }
@@ -460,9 +487,9 @@ func (b *BotService) handleLink(chatID int64, email string, username *string) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = b.chatRepo.Create(context.Background(), link)
+	err = b.chatRepo.Upsert(context.Background(), link)
 	if err != nil {
-		b.sendReply(chatID, "❌ Failed to link account. It may already be linked.")
+		b.sendReply(chatID, "❌ Failed to link account. Please try again.")
 		return
 	}
 
@@ -1151,6 +1178,10 @@ func (b *BotService) handleUnlink(chatID int64) {
 }
 
 func (b *BotService) sendReply(chatID int64, text string) {
+	if b.replySpy != nil {
+		b.replySpy(chatID, text)
+		return
+	}
 	b.sendReplyWithKeyboard(chatID, text, nil)
 }
 

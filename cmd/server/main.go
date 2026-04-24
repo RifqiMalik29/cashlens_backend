@@ -20,7 +20,7 @@ import (
 	"github.com/rifqimalik/cashlens-backend/internal/logger"
 	custommiddleware "github.com/rifqimalik/cashlens-backend/internal/middleware"
 	"github.com/rifqimalik/cashlens-backend/internal/pkg/mailer"
-	"github.com/rifqimalik/cashlens-backend/internal/pkg/xendit"
+
 	"github.com/rifqimalik/cashlens-backend/internal/repository"
 	"github.com/rifqimalik/cashlens-backend/internal/service"
 	"github.com/rifqimalik/cashlens-backend/internal/telegram"
@@ -90,23 +90,15 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Pool)
 	quotaRepo := repository.NewQuotaRepository(db.Pool)
 	subEventRepo := repository.NewSubscriptionEventRepository(db.Pool)
-	pendingInvoiceRepo := repository.NewPendingInvoiceRepository(db.Pool)
+	// pendingInvoiceRepo is no longer needed now that Xendit is removed.
 	winBackRepo := repository.NewWinBackRepository(db.Pool)
 	reminderRepo := repository.NewReminderRepository(db.Pool)
-
-	// Initialize Xendit client
-	xenditClient := xendit.NewXenditClient(cfg.Payment.XenditSecretKey)
 
 	// Initialize services
 	categorySeedingService := service.NewCategorySeedingService(categoryRepo)
 	quotaService := service.NewQuotaService(quotaRepo, userRepo)
-	subscriptionService := service.NewSubscriptionService(
-		userRepo,
-		subEventRepo,
-		pendingInvoiceRepo,
-		xenditClient,
-		cfg.Payment.XenditWebhookToken,
-	)
+	revenueCatService := service.NewRevenueCatService(userRepo, subEventRepo)
+	// subscriptionService and paymentService are being phased out.
 	winBackService := service.NewWinBackService(winBackRepo, chatRepo, cfg.Telegram.BotToken)
 	expiryReminderService := service.NewExpiryReminderService(reminderRepo, chatRepo, cfg.Telegram.BotToken)
 
@@ -135,7 +127,6 @@ func main() {
 	transactionService := service.NewTransactionService(transactionRepo, quotaService)
 	budgetService := service.NewBudgetService(budgetRepo)
 	draftService := service.NewDraftService(draftRepo, transactionRepo)
-	paymentService := service.NewPaymentService(xenditClient)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db)
@@ -145,16 +136,9 @@ func main() {
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 	draftHandler := handlers.NewDraftHandler(draftService)
 	receiptHandler := handlers.NewReceiptHandler(cfg.GeminiAPI.APIKey, cfg.GeminiAPI.ScanningModel, cfg.Server.Environment, quotaService, categoryRepo)
-	subscriptionHandler := handlers.NewSubscriptionHandler(
-		quotaService,
-		userRepo,
-		subscriptionService,
-		xenditClient,
-		cfg.Payment.XenditWebhookToken,
-		getEnv("XENDIT_SUCCESS_URL", "cashlens://payment/success"),
-		getEnv("XENDIT_FAILURE_URL", "cashlens://payment/failed"),
-	)
-	paymentHandler := handlers.NewPaymentHandler(paymentService, authService, cfg, log)
+	revenueCatHandler := handlers.NewRevenueCatHandler(revenueCatService, cfg, log)
+	// The old subscriptionHandler and paymentHandler are being phased out.
+
 
 	// Initialize Telegram Bot
 	var botService *telegram.BotService
@@ -231,19 +215,8 @@ func main() {
 	}()
 	log.Info("1-day expiry reminder scheduler started")
 
-	// Start expired invoice cleanup (runs daily)
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for range ticker.C {
-			count, err := pendingInvoiceRepo.ExpireStale(context.Background())
-			if err != nil {
-				log.Error("Expired invoice cleanup failed", "error", err)
-			} else if count > 0 {
-				log.Info("Expired invoices cleaned up", "count", count)
-			}
-		}
-	}()
+	// The expired invoice cleanup job is no longer needed as the pending_invoices table is removed.
+
 
 	// Start trial expiry scheduler (runs hourly)
 	go func() {
@@ -314,8 +287,7 @@ func main() {
 			r.Use(httprate.LimitByIP(cfg.RateLimit.Requests, cfg.RateLimit.Window))
 			r.Use(custommiddleware.MaxBodyLimit(1 << 20)) // 1MB limit for JSON requests
 
-			// Payments
-			r.Post("/payments/create-session", paymentHandler.CreatePaymentSession)
+			// Payments are now handled client-side via RevenueCat SDK
 
 			// Auth
 			r.Get("/auth/me", authHandler.GetMe)
@@ -328,9 +300,8 @@ func main() {
 			r.Delete("/auth/me", authHandler.DeleteMe)
 
 			// Subscription
-			r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
-			r.Post("/subscription/verify", subscriptionHandler.VerifyPayment)
-			r.Post("/payments/create-invoice", subscriptionHandler.CreateInvoice)
+			// The old /subscription routes are deprecated and will be replaced.
+			// r.Get("/subscription", subscriptionHandler.GetSubscriptionStatus)
 
 			// Receipt Scanning (stricter rate limit + 10MB body for image uploads)
 			r.Group(func(r chi.Router) {
@@ -372,7 +343,7 @@ func main() {
 		// Webhook routes (rate-limited; full signature verification required before enabling)
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
-			r.Post("/webhooks/payment", subscriptionHandler.PaymentWebhook)
+			r.Post("/webhooks/revenuecat", revenueCatHandler.Webhook)
 		})
 	})
 

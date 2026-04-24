@@ -222,59 +222,45 @@ components:
           type: integer
           example: 5
 
-    CreateInvoiceRequest:
+    RevenueCatWebhookPayload:
       type: object
-      required:
-        - plan
+      description: The payload sent by RevenueCat webhooks.
       properties:
-        plan:
+        api_version:
           type: string
-          enum: [monthly, annual, founder_annual]
-          example: "monthly"
-
-    CreateInvoiceResponse:
-      type: object
-      properties:
-        payment_url:
-          type: string
-          example: "https://checkout.xendit.co/v2/..."
-        invoice_id:
-          type: string
-          example: "cashlens-abcd1234-1620000000"
-        expires_at:
-          type: string
-          format: date-time
-        amount:
-          type: number
-          example: 15000
-        plan:
-          type: string
-          example: "monthly"
-
-    VerifyPaymentRequest:
-      type: object
-      required:
-        - invoice_id
-      properties:
-        invoice_id:
-          type: string
-          example: "cashlens-abcd1234-1620000000"
-
-    XenditWebhookPayload:
-      type: object
-      properties:
+          example: "1.0"
         event:
-          type: string
-          example: "payment_session.completed"
-        data:
           type: object
           properties:
-            reference_id:
+            id:
               type: string
-            status:
+              example: "evt_42a8390282"
+            type:
               type: string
-            amount:
-              type: number
+              example: "TEST"
+            event_timestamp_ms:
+              type: integer
+              format: int64
+              example: 1603836289299
+            app_user_id:
+              type: string
+              format: uuid
+              example: "550e8400-e29b-41d4-a716-446655440000"
+            product_id:
+              type: string
+              example: "monthly_premium"
+            entitlement_ids:
+              type: array
+              items:
+                type: string
+              example: ["premium"]
+            store:
+              type: string
+              enum: [APP_STORE, MAC_APP_STORE, PLAY_STORE, STRIPE, PROMOTIONAL, UNKNOWN]
+              example: "PLAY_STORE"
+            is_sandbox:
+              type: boolean
+              example: true
 
     ErrorResponse:
       type: object
@@ -445,9 +431,9 @@ components:
           type: number
           format: double
           example: 1000000
-        period:
+        period_type:
           type: string
-          enum: [daily, weekly, monthly, yearly]
+          enum: [weekly, monthly, yearly]
           example: "monthly"
         start_date:
           type: string
@@ -467,7 +453,7 @@ components:
       required:
         - category_id
         - amount
-        - period
+        - period_type
         - start_date
         - end_date
       properties:
@@ -478,9 +464,9 @@ components:
           type: number
           format: double
           example: 1000000
-        period:
+        period_type:
           type: string
-          enum: [daily, weekly, monthly, yearly]
+          enum: [weekly, monthly, yearly]
           example: "monthly"
         start_date:
           type: string
@@ -496,9 +482,9 @@ components:
           type: number
           format: double
           example: 1500000
-        period:
+        period_type:
           type: string
-          enum: [daily, weekly, monthly, yearly]
+          enum: [weekly, monthly, yearly]
         start_date:
           type: string
           format: date-time
@@ -594,40 +580,6 @@ components:
           type: string
           format: date-time
           nullable: true
-
-    CreatePaymentSessionRequest:
-      type: object
-      required:
-        - amount
-        - currency
-        - success_redirect_url
-        - failure_redirect_url
-      properties:
-        amount:
-          type: number
-          format: double
-          example: 15000
-        currency:
-          type: string
-          example: "IDR"
-        success_redirect_url:
-          type: string
-          format: uri
-          example: "cashlens://payment/success"
-        failure_redirect_url:
-          type: string
-          format: uri
-          example: "cashlens://payment/failed"
-
-    CreatePaymentSessionResponse:
-      type: object
-      properties:
-        payment_session_id:
-          type: string
-          example: "ps-abc123"
-        payment_link_url:
-          type: string
-          example: "https://checkout.xendit.co/v2/..."
 
     HealthResponse:
       type: object
@@ -1104,110 +1056,33 @@ paths:
         '401':
           description: Unauthorized
 
-  /api/v1/subscription/verify:
-    post:
-      summary: Verify payment
-      description: Manually trigger a check for a pending invoice to upgrade the user's tier
-      tags:
-        - Subscription
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VerifyPaymentRequest'
-      responses:
-        '200':
-          description: Payment verified successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-              example:
-                message: "payment verified and upgraded"
-        '400':
-          description: Verification failed or invalid invoice
-        '401':
-          description: Unauthorized
 
-  /api/v1/payments/create-session:
-    post:
-      summary: Create payment session
-      description: Create a Xendit payment session (payment link) for a custom amount. Use this for general payments; use /payments/create-invoice for subscription plans.
-      tags:
-        - Payments
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreatePaymentSessionRequest'
-      responses:
-        '201':
-          description: Payment session created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreatePaymentSessionResponse'
-              example:
-                payment_session_id: "ps-abc123"
-                payment_link_url: "https://checkout.xendit.co/v2/..."
-        '400':
-          description: Validation error
-        '401':
-          description: Unauthorized
-        '500':
-          description: Failed to initiate payment
 
-  /api/v1/payments/create-invoice:
+  /api/v1/webhooks/revenuecat:
     post:
-      summary: Create payment invoice
-      description: Generate a Xendit invoice for a subscription plan
-      tags:
-        - Payments
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateInvoiceRequest'
-      responses:
-        '200':
-          description: Invoice created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: '#/components/schemas/CreateInvoiceResponse'
-        '400':
-          description: Invalid plan
-        '401':
-          description: Unauthorized
-
-  /api/v1/webhooks/payment:
-    post:
-      summary: Payment webhook
-      description: Callback for Xendit payment notifications. Requires x-callback-token header for verification.
+      summary: RevenueCat Webhook
+      description: >
+        Callback for RevenueCat subscription events. Requires a Bearer token
+        in the Authorization header for verification.
       tags:
         - Webhooks
       parameters:
-        - name: x-callback-token
+        - name: Authorization
           in: header
           required: true
           schema:
             type: string
-          description: Token used to verify the webhook request source.
+            example: "Bearer YOUR_WEBHOOK_SECRET"
+          description: Bearer token containing the webhook secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueCatWebhookPayload'
       responses:
         '200':
-          description: Webhook processed
+          description: Webhook processed successfully.
           content:
             application/json:
               schema:
@@ -1215,13 +1090,14 @@ paths:
                 properties:
                   status:
                     type: string
-                  message:
-                    type: string
-              example:
-                status: "ok"
-                message: "webhook processed"
+                example:
+                  status: "ok"
+        '400':
+          description: Invalid request body.
         '401':
-          description: Invalid webhook signature
+          description: Unauthorized. Invalid or missing Authorization header.
+        '500':
+          description: Internal server error while processing the webhook.
 
   /api/v1/categories:
     post:
@@ -1628,7 +1504,7 @@ paths:
             example:
               category_id: "550e8400-e29b-41d4-a716-446655440000"
               amount: 1000000
-              period: "monthly"
+              period_type: "monthly"
               start_date: "2026-04-01T00:00:00Z"
               end_date: "2026-04-30T23:59:59Z"
       responses:
@@ -1647,7 +1523,7 @@ paths:
                   user_id: "550e8400-e29b-41d4-a716-446655440000"
                   category_id: "550e8400-e29b-41d4-a716-446655440000"
                   amount: 1000000
-                  period: "monthly"
+                  period_type: "monthly"
                   start_date: "2026-04-01T00:00:00Z"
                   end_date: "2026-04-30T23:59:59Z"
                   created_at: "2026-04-12T10:30:00Z"
@@ -1676,7 +1552,7 @@ paths:
                   - id: "770e8400-e29b-41d4-a716-446655440000"
                     user_id: "550e8400-e29b-41d4-a716-446655440000"
                     amount: 1000000
-                    period: "monthly"
+                    period_type: "monthly"
                     start_date: "2026-04-01T00:00:00Z"
                     end_date: "2026-04-30T23:59:59Z"
                     created_at: "2026-04-12T10:30:00Z"
@@ -1711,7 +1587,7 @@ paths:
                   id: "770e8400-e29b-41d4-a716-446655440000"
                   user_id: "550e8400-e29b-41d4-a716-446655440000"
                   amount: 1000000
-                  period: "monthly"
+                  period_type: "monthly"
                   start_date: "2026-04-01T00:00:00Z"
                   end_date: "2026-04-30T23:59:59Z"
                   created_at: "2026-04-12T10:30:00Z"
@@ -1730,7 +1606,7 @@ paths:
               $ref: '#/components/schemas/UpdateBudgetRequest'
             example:
               amount: 1500000
-              period: "monthly"
+              period_type: "monthly"
       responses:
         '200':
           description: Budget updated successfully
@@ -1747,7 +1623,7 @@ paths:
                 data:
                   id: "770e8400-e29b-41d4-a716-446655440000"
                   amount: 1500000
-                  period: "monthly"
+                  period_type: "monthly"
                 message: "Budget updated successfully"
     delete:
       summary: Delete budget
