@@ -472,7 +472,12 @@ func (b *BotService) handleCommand(chatID int64, text string, username *string) 
 func (b *BotService) handleLink(chatID int64, email string, username *string) {
 	user, err := b.userRepo.GetByEmail(context.Background(), email)
 	if err != nil {
-		b.sendReply(chatID, "❌ Email not found. Please register first in the app.")
+		log.Printf("[Telegram Bot] GetByEmail error for %s: %v", email, err)
+		if strings.Contains(err.Error(), "not found") {
+			b.sendReply(chatID, "❌ Email not found. Please register first in the app.")
+		} else {
+			b.sendReply(chatID, "❌ Failed to look up account. Please try again.")
+		}
 		return
 	}
 
