@@ -158,8 +158,12 @@ func main() {
 			chatRepo,
 			categoryRepo,
 		)
-		go botService.StartPolling(context.Background())
-		log.Info("Telegram bot started")
+		if cfg.Telegram.Mode == "polling" {
+			go botService.StartPolling(context.Background())
+			log.Info("Telegram bot started (polling mode)")
+		} else {
+			log.Info("Telegram bot initialized (webhook mode)")
+		}
 	} else {
 		log.Info("Telegram bot token not configured - skipping bot initialization")
 	}
@@ -344,6 +348,11 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(cfg.RateLimit.AuthRequests, cfg.RateLimit.AuthWindow))
 			r.Post("/webhooks/revenuecat", revenueCatHandler.Webhook)
+			if botService != nil {
+				r.Post("/webhooks/telegram", func(w http.ResponseWriter, r *http.Request) {
+					botService.HandleWebhook(cfg.Telegram.WebhookSecret, w, r)
+				})
+			}
 		})
 	})
 
